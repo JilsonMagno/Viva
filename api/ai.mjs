@@ -258,7 +258,7 @@ export default async function handler(req, res) {
         model: isVision ? visionModel : model,
         messages,
         temperature: 0.2,
-        max_tokens: isVision ? 900 : 600
+        max_tokens: 900
       })
     });
   } catch {
