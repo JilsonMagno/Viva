@@ -65,6 +65,7 @@ const state = {
     protein: 10,
     carbs: 30,
     fat: 10,
+    servingGrams: 120,
     source: "Open Food Facts",
     url: "https://world.openfoodfacts.org/product/test-food"
   },

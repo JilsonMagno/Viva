@@ -30,7 +30,7 @@ globalThis.fetch = async (url, options = {}) => {
   calls.push(target);
   const query = new URL(target).searchParams.get("search_terms");
   if (query === "esfihas") return { ok: true, json: async () => ({ products: [] }) };
-  if (query === "sem dados") return { ok: true, json: async () => ({ products: [] }) };
+  if (query.includes("sem")) return { ok: true, json: async () => ({ products: [] }) };
   if (query === "incompleto") {
     return {
       ok: true,
@@ -47,6 +47,7 @@ globalThis.fetch = async (url, options = {}) => {
           code: "789",
           product_name: query === "esfiha" ? "Esfiha de carne" : "Alimento de teste",
           brands: "Marca teste",
+          quantity: "219 g",
           nutriments: {
             "energy-kcal_100g": 250,
             proteins_100g: 10,
@@ -92,6 +93,7 @@ await check("alimento encontrado usa valores por 100 g", async () => {
   assert(res.body.food.name === "Esfiha de carne", "nome");
   assert(res.body.food.kcal === 250, "kcal");
   assert(res.body.food.protein === 10, "proteína");
+  assert(res.body.food.servingGrams === 219, "peso da porção");
   assert(res.body.food.source === "Open Food Facts", "fonte");
   assert(calls.length === 1, "uma busca");
   assert(calls[0].includes("search_terms=esfiha"), "termo pesquisado");

@@ -35,6 +35,21 @@ function round1(value) {
   return Math.round(value * 10) / 10;
 }
 
+function grams(value) {
+  const match = String(value || "").match(/(\d+(?:[.,]\d+)?)\s*(kg|g|ml|l)\b/i);
+  if (!match) return null;
+  let amount = Number(match[1].replace(",", "."));
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (/^(?:kg|l)$/i.test(match[2])) amount *= 1000;
+  return round1(amount);
+}
+
+function servingGrams(product) {
+  const serving = number(product.serving_quantity);
+  if (serving && serving > 0) return round1(serving);
+  return grams(product.quantity) ?? grams(product.serving_size);
+}
+
 function rateLimited(userId) {
   const now = Date.now();
   const entry = RATE.get(userId);
@@ -79,34 +94,42 @@ function nutrition(product) {
 }
 
 async function fetchProducts(query) {
-  const url = new URL("https://world.openfoodfacts.org/cgi/search.pl");
-  url.searchParams.set("search_terms", query);
-  url.searchParams.set("search_simple", "1");
-  url.searchParams.set("action", "process");
-  url.searchParams.set("json", "1");
-  url.searchParams.set("page_size", "50");
-  const upstream = await fetch(url, {
-    headers: { Accept: "application/json", "User-Agent": "Viva/2.8 (https://viva-rouge-omega.vercel.app)" },
-    signal: AbortSignal.timeout(8000)
-  });
-  if (!upstream.ok) return [];
-  const payload = await upstream.json().catch(() => null);
-  return Array.isArray(payload?.products) ? payload.products : [];
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const url = new URL("https://world.openfoodfacts.org/cgi/search.pl");
+    url.searchParams.set("search_terms", query);
+    url.searchParams.set("search_simple", "1");
+    url.searchParams.set("action", "process");
+    url.searchParams.set("json", "1");
+    url.searchParams.set("page_size", "50");
+    url.search = url.search.replace(/\+/g, "%20");
+    try {
+      const upstream = await fetch(url, {
+        headers: { Accept: "application/json", "User-Agent": "Viva/2.8.1 (https://viva-rouge-omega.vercel.app)" },
+        signal: AbortSignal.timeout(6000)
+      });
+      if (upstream.ok) {
+        const payload = await upstream.json().catch(() => null);
+        const products = Array.isArray(payload?.products) ? payload.products : [];
+        if (products.length) return products;
+      }
+    } catch {
+      // A próxima tentativa cobre falhas transitórias do Open Food Facts.
+    }
+    if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 600));
+  }
+  return [];
 }
 
 async function searchOpenFoodFacts(name) {
   const queries = [...new Set([name, singular(name)])].filter(Boolean);
   let best = null;
   for (const query of queries) {
-    let products = await fetchProducts(query);
-    if (!products.length) {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      products = await fetchProducts(query);
-    }
+    const products = await fetchProducts(query);
     for (const product of products) {
       const values = nutrition(product);
       if (!values) continue;
-      const score = scoreProduct(product, query);
+      const serving = servingGrams(product);
+      const score = scoreProduct(product, query) + (serving ? 0.5 : 0);
       if (score <= 0) continue;
       if (!best || score > best.score) {
         const productName = String(product.product_name || product.generic_name || "").trim().slice(0, 120);
@@ -118,6 +141,7 @@ async function searchOpenFoodFacts(name) {
             name: productName,
             brand: String(product.brands || "").split(",")[0].trim().slice(0, 80),
             ...values,
+            servingGrams: serving,
             source: SOURCE,
             url: code ? `https://world.openfoodfacts.org/product/${encodeURIComponent(code)}` : "https://world.openfoodfacts.org"
           }

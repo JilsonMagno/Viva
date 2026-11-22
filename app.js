@@ -921,21 +921,27 @@
     rest = rest.replace(/^(?:de|do|da|dos|das)\s+/, "").trim();
     if (!rest || rest.length < 2) return null;
     if (/^(?:colher|colheres|grama|gramas|g|ml|mililitro|mililitros|litro|litros|copo|copos|xicara|xicaras|fatia|fatias|unidade|unidades|porcao|porcoes|prato|pratos|concha|conchas|scoop|scoops|barra|barras|lata|latas|pacote|pacotes|pote|potes)$/.test(rest)) return null;
-    return { name: rest, grams: grams ?? qty * 100 };
+    return { name: rest, qty, grams };
   }
 
   async function lookupFood(name) {
     try {
       const session = await ensureSession();
       if (!session) return null;
-      const res = await fetch("/api/food", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ name })
-      });
-      if (!res.ok) return null;
-      const data = await res.json().catch(() => null);
-      return data?.food || null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const res = await fetch("/api/food", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ name })
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          return data?.food || null;
+        }
+        if (res.status !== 404) return null;
+        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+      return null;
     } catch {
       return null;
     }
@@ -971,11 +977,12 @@
         unknown.push(unknownItem.name);
         continue;
       }
-      const factor = unknownItem.grams / 100;
+      const totalGrams = unknownItem.grams ?? (found.servingGrams ? unknownItem.qty * found.servingGrams : unknownItem.qty * 100);
+      const factor = totalGrams / 100;
       items.push({
         foodId: `web-${found.code || found.name}`,
         name: found.name,
-        grams: round(unknownItem.grams),
+        grams: round(totalGrams),
         kcal: +(found.kcal * factor).toFixed(1),
         p: +(found.protein * factor).toFixed(1),
         c: +(found.carbs * factor).toFixed(1),

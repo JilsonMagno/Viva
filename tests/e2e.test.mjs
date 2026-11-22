@@ -338,6 +338,24 @@ await check("4d. nome fora da tabela é buscado em base pública", async () => {
   await page.close();
 });
 
+await check("4f. uma unidade usa o peso da porção encontrada", async () => {
+  await resetAll();
+  await seed(demoState());
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "1 esfiha");
+  await waitChat(page, "Total da refeição: 300 kcal");
+  const row = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    return current && current.data.days[today()]?.meals?.length === 1 ? current : null;
+  });
+  const item = row.data.days[today()].meals[0].items[0];
+  equal(item.grams, 120, "1 unidade = 120 g da porção");
+  equal(item.kcal, 300, "kcal da porção");
+  await page.close();
+});
+
 await check("4e. sem dados públicos, não inventa valores", async () => {
   await resetAll();
   await setConfig({ foodMode: "notfound" });
