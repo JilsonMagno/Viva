@@ -17,7 +17,7 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 - Base de 83 alimentos com valores por 100 g, fonte e referência por item (TACO 4ª ed. e USDA FoodData Central).
 
 Testes:
-- `node tests/rls.test.mjs`: 10 verificações da migração e das regras de acesso, em Postgres real (PGlite).
+- `node tests/rls.test.mjs`: 11 verificações da migração e das regras de acesso, em Postgres real (PGlite), incluindo um usuário anônimo.
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
 - `node tests/e2e.test.mjs`: 20 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, exportação, exclusão, logout, isolamento entre contas, links diretos, PWA, acessibilidade, falha de rede e layout em 390 px.
 - `npm test`: roda as três suítes.

@@ -50,6 +50,12 @@ async function asAnon() {
   await db.query("select set_config('request.jwt.claims', '', false)");
 }
 
+async function asAnonymous(id) {
+  await db.exec("reset role");
+  await db.exec("set role authenticated");
+  await db.query("select set_config('request.jwt.claims', $1, false)", [JSON.stringify({ sub: id, is_anonymous: true, role: "authenticated" })]);
+}
+
 async function countRows(where, params = []) {
   const result = await db.query(`select count(*)::int as n from public.viva_data ${where}`, params);
   return result.rows[0].n;
@@ -195,6 +201,27 @@ await check("10. dados inválidos são rejeitados e apagar a conta remove a linh
   await db.query("delete from auth.users where id = $1", [B]);
   equal(await countRows("where user_id = $1", [B]), 0, "a linha de B deve sumir em cascata");
   equal(await countRows("where user_id = $1", [A]), 1, "a linha de A deve continuar");
+});
+
+await check("11. usuário anônimo só acessa a própria linha", async () => {
+  const D = "44444444-4444-4444-8444-444444444444";
+  await asPostgres();
+  await db.query("insert into auth.users (id, email) values ($1, null) on conflict do nothing", [D]);
+  await asAnonymous(D);
+  const inserted = await db.query(`insert into public.viva_data (user_id, data) values ($1, '{"profile":{"name":"Visitante"}}'::jsonb)`, [D]);
+  equal(inserted.affectedRows, 1, "anônimo deve inserir a própria linha");
+  const own = await db.query("select user_id from public.viva_data");
+  equal(own.rows.length, 1, "anônimo deve ver só a própria linha");
+  equal(own.rows[0].user_id, D, "a linha deve ser do anônimo");
+  const other = await db.query("select count(*)::int as n from public.viva_data where user_id = $1", [A]);
+  equal(other.rows[0].n, 0, "anônimo não deve ver a linha de A");
+  let denied = false;
+  try {
+    await db.query(`insert into public.viva_data (user_id, data) values ($1, '{"profile":{}}'::jsonb)`, [A]);
+  } catch (error) {
+    denied = error.code === "42501";
+  }
+  assert(denied, "anônimo não deve inserir para A");
 });
 
 await asPostgres();
