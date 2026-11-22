@@ -1,6 +1,6 @@
 {
   "name": "viva",
-  "version": "2.12.0",
+  "version": "2.13.0",
   "private": true,
   "description": "Viva: assistente pessoal de saude com Supabase",
   "scripts": {

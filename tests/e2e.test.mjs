@@ -595,9 +595,28 @@ await check("7. peso por texto atualiza o histórico e a diferença", async () =
   await page.close();
 });
 
-await check("8. pergunta aberta envia texto e contexto vazio, e aceita answer/reply", async () => {
+await check("8. pergunta aberta envia perfil, metas e histórico do usuário", async () => {
   await resetAll();
-  await seed(demoState({ days: {} }));
+  const day = today();
+  await seed(demoState({
+    days: {
+      [day]: {
+        meals: [{
+          id: "ctx-meal",
+          at: new Date().toISOString(),
+          label: "Almoço",
+          kcal: 296,
+          p: 19.1,
+          c: 29.9,
+          f: 12.6,
+          items: [{ name: "Ovo cozido", grams: 100, kcal: 145.7, p: 13.3, c: 0.6, f: 9.5 }]
+        }],
+        waterMl: 500,
+        activities: [{ id: "ctx-act", at: new Date().toISOString(), name: "Caminhada", minutes: 30, kcal: 150, met: 3.5 }],
+        weightKg: 74.2
+      }
+    }
+  }));
   await setConfig({ aiAnswer: "Uma boa dieta varia os grupos alimentares." });
   const page = await newPage();
   await login(page, "A");
@@ -611,16 +630,31 @@ await check("8. pergunta aberta envia texto e contexto vazio, e aceita answer/re
   const body = state.aiBodies[0];
   equal(body.question, question, "campo question");
   equal(body.message, question, "campo message");
-  equal(JSON.stringify(body.context), "{}", "contexto deve ir vazio");
+  assert(body.context && typeof body.context === "object", "contexto deve ser um objeto");
+  equal(body.context.profile.name, "Ana", "nome no contexto");
+  equal(body.context.profile.goal, "lose", "objetivo no contexto");
+  equal(body.context.targets.kcal, 1970, "meta de kcal no contexto");
+  equal(body.context.targets.protein, 119, "meta de proteína no contexto");
+  equal(body.context.today.meals[0].label, "Almoço", "refeição no contexto");
+  equal(body.context.today.meals[0].items[0].name, "Ovo cozido", "item no contexto");
+  equal(body.context.today.waterMl, 500, "água no contexto");
+  equal(body.context.today.activities[0].minutes, 30, "atividade no contexto");
+  equal(body.context.summary.todayKcal, 296, "resumo de kcal no contexto");
+  equal(body.context.summary.todayProtein, 19.1, "resumo de proteína no contexto");
+  equal(body.context.today.weightKg, 74.2, "peso do dia no contexto");
+  equal(body.context.weights.length, 1, "histórico de peso no contexto");
+  assert(Array.isArray(body.context.dailyHistory) && body.context.dailyHistory.length === 1, "histórico diário no contexto");
+  assert(JSON.stringify(body.context).length <= 20000, "contexto deve respeitar o limite");
   equal(JSON.stringify(Object.keys(body)), JSON.stringify(["question", "message", "context"]), "corpo inesperado");
   const row = await rowFor(USER_A.id);
-  equal(Object.keys(row.data.days).length, 0, "pergunta não deveria criar registros de refeição");
+  equal(Object.keys(row.data.days).length, 1, "pergunta não deveria criar outro dia");
   await setConfig({ aiMode: "reply", aiAnswer: "Resposta no formato reply." });
   await send(page, "e no formato reply?");
   await waitChat(page, "Resposta no formato reply.");
   const replyState = await getState();
   equal(replyState.aiCalls, 2, "chamadas à IA com reply");
   equal(replyState.aiBodies[1].message, "e no formato reply?", "message no segundo envio");
+  assert(replyState.aiBodies[1].context.profile.name === "Ana", "contexto no segundo envio");
   await page.close();
 });
 

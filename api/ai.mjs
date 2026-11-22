@@ -17,6 +17,7 @@ const SYSTEM = [
   "Responda em no máximo 5 frases curtas.",
   "Não faça diagnóstico, não prescreva remédio e não substitua orientação médica.",
   "Não recomende dietas extremas nem metas abaixo de 1200 kcal.",
+  "Use o contexto do usuário (perfil, metas, registros e histórico) para personalizar a resposta; não invente dados que não estejam no contexto.",
   "Se a pergunta não for sobre alimentação, movimento, sono ou rotina, diga brevemente que só ajuda com esses temas."
 ].join(" ");
 
@@ -26,6 +27,7 @@ const VISION_SYSTEM = [
   "Responda SOMENTE com JSON válido, sem markdown, no formato:",
   '{"items":[{"name":"arroz branco","grams":120,"kcal":154,"protein":3.0,"carbs":33.7,"fat":0.2}],"confidence":"media","note":"Estimativa visual."}',
   "Use no máximo 8 itens. Não invente precisão; se não tiver certeza, use confiança baixa.",
+  "Use o contexto do usuário apenas para personalizar a estimativa; não invente dados ausentes.",
   "Não faça diagnóstico, não prescreva remédio e não substitua orientação médica."
 ].join(" ");
 
@@ -54,6 +56,7 @@ const RATE = new Map();
 const RATE_LIMIT = 30;
 const RATE_WINDOW = 60_000;
 const IMAGE_MAX_CHARS = 5_000_000;
+const CONTEXT_MAX_CHARS = 24_000;
 
 function rateLimited(userId) {
   const now = Date.now();
@@ -176,8 +179,8 @@ export default async function handler(req, res) {
   }
 
   const isVision = !!image;
-  const context = body.context && typeof body.context === "object" ? JSON.stringify(body.context).slice(0, 4000) : "";
-  const userText = context ? `Contexto do dia (JSON): ${context}\n\nPergunta: ${question}` : question;
+  const context = body.context && typeof body.context === "object" ? JSON.stringify(body.context).slice(0, CONTEXT_MAX_CHARS) : "";
+  const userText = context ? `Contexto do usuário e do app (JSON): ${context}\n\nPergunta: ${question}` : question;
 
   if (isVision && providerName === "gemini") {
     const mime = image.match(/^data:(image\/[a-z]+);base64,/i)?.[1] || "image/jpeg";

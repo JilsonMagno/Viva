@@ -134,6 +134,23 @@ await check("OpenRouter usa o modelo gratuito com visão", async () => {
   assert(calls[0].body.model === "openrouter/free", "modelo gratuito OpenRouter");
 });
 
+await check("contexto do usuário é repassado ao provedor", async () => {
+  calls.length = 0;
+  const res = response();
+  await handler(request({
+    question: "resuma meu dia",
+    apiKey: "sk-user",
+    provider: "openai",
+    context: { profile: { name: "Ana", goal: "lose" }, targets: { kcal: 1970, protein: 119 } }
+  }), res);
+  assert(res.statusCode === 200, `status ${res.statusCode}`);
+  const content = calls[0].body.messages[1].content;
+  assert(typeof content === "string", "conteúdo textual");
+  assert(content.includes("Contexto do usuário e do app"), "rótulo do contexto");
+  assert(content.includes('"name":"Ana"'), "perfil no contexto");
+  assert(content.includes('"kcal":1970'), "metas no contexto");
+});
+
 await check("imagem em formato não permitido é recusada", async () => {
   const res = response();
   await handler(request({ question: "analise", apiKey: "sk-user", provider: "openai", image: "data:image/gif;base64,AAAA" }), res);

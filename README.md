@@ -10,7 +10,7 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 - Primeiro acesso sem dados de exemplo: você informa idade, altura, peso e objetivo, e a Viva calcula as metas iniciais.
 - Cada conta lê e grava só a própria linha no banco (RLS).
 - Registros pelo assistente (refeições, água, atividade e peso) são salvos na conta.
-- Perguntas vão à IA incluída no app quando o dono configura a chave no servidor. O usuário pode, opcionalmente, salvar a própria chave (OpenAI, Gemini, Groq ou OpenRouter) em Perfil; ela fica só no navegador e tem prioridade. Sem nenhuma chave, o assistente local responde sobre proteína, calorias, água, resumo e sugestão de jantar.
+- Perguntas vão à IA incluída no app quando o dono configura a chave no servidor. A IA recebe o perfil, as metas, o dia atual, os últimos dias detalhados, o resumo de todo o histórico, o peso e as últimas mensagens para personalizar a resposta. O usuário pode, opcionalmente, salvar a própria chave (OpenAI, Gemini, Groq ou OpenRouter) em Perfil; ela fica só no navegador e tem prioridade. Sem nenhuma chave, o assistente local responde sobre proteína, calorias, água, resumo e sugestão de jantar.
 - Foto do prato: a IA com visão estima alimentos, porções e kcal; o usuário confere e adiciona ao diário.
 - Dashboard completo em Evolução: perfil, metas, hoje, médias de 7 e 14 dias, peso, alimentos mais registrados e histórico recente, com impressão/PDF.
 - Exportar os dados em JSON e apagar tudo, com confirmação em dois toques.
@@ -35,17 +35,17 @@ Os IDs internos antigos (`hoje`, `viva`, `diario`) foram mantidos para não queb
 Testes:
 - `node tests/rls.test.mjs`: 15 verificações da migração e das regras de acesso, em Postgres real (PGlite), incluindo um usuário anônimo.
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
-- `node tests/ai-proxy.test.mjs`: 9 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter e recusa de foto no Groq.
+- `node tests/ai-proxy.test.mjs`: 10 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter, contexto do usuário e recusa de foto no Groq.
 - `node tests/food-api.test.mjs`: 10 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g e ausência de dados.
 - `node tests/e2e.test.mjs`: 32 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as cinco suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 208.114 bytes crus, 52.952 bytes em gzip e 44.814 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 214.230 bytes crus, 54.458 bytes em gzip e 45.843 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.12.0`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.13.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -116,6 +116,20 @@ Cada treino é salvo como uma atividade de musculação, com MET 3,5 (leve), 6 (
 
 O Google não oferece uma API pública gratuita de nutrição estruturada; por isso a busca externa usa o Open Food Facts. Se você tiver uma API de busca própria, ela pode ser adicionada em `api/food.mjs`.
 
+## Contexto da IA
+
+Com a IA ligada, cada pergunta envia ao provedor:
+
+- perfil: nome, idade, altura, peso, objetivo e IMC;
+- metas de calorias, proteína, carboidratos, gordura e água;
+- dia atual completo: refeições, itens, quantidades, água, atividades, treino e peso do dia;
+- últimos 7 dias detalhados;
+- resumo de todos os dias com dados: kcal, macros, água, minutos de atividade, gasto e peso;
+- histórico de peso;
+- últimas 12 mensagens da conversa.
+
+O contexto não inclui token de sessão, chave de IA, senha ou e-mail. O limite é de 20.000 caracteres; se o histórico for maior, os itens mais antigos são cortados e o contexto é marcado com `meta.truncated`. Com a IA desligada, nenhum dado do app é enviado.
+
 ## Editar refeição
 
 Na aba **Alimentação**, cada refeição tem um botão de edição (lápis). Ele abre um painel com todos os alimentos da refeição. Em cada alimento, você pode:
@@ -139,7 +153,7 @@ Na aba **Atividades**, o cartão **Compras com orçamento** monta uma cesta para
 ## Decisões
 
 - **Banco e login: Supabase.** Uma linha `jsonb` por conta. É simples e suficiente para duas pessoas. Separar em tabelas por tipo de registro fica para a Fase 3.
-- **IA: chave do dono no servidor por padrão; chave própria opcional.** O Vercel guarda `AI_API_KEY`; o navegador nunca recebe essa chave. O app chama `/api/ai`, que valida o JWT do Supabase, aplica limite de 30 perguntas/min por usuário e repassa a pergunta ao provedor. Quem preferir pode salvar a própria chave em Perfil; ela fica no `localStorage` daquele navegador e tem prioridade sobre a chave do servidor. Registros de refeição, água, atividade e peso não são enviados ao provedor; só o texto da pergunta e, quando o usuário pede, a foto do prato. Nomes de alimentos fora da tabela são enviados ao Open Food Facts para consulta; os valores ficam no seu diário no Supabase.
+- **IA: chave do dono no servidor por padrão; chave própria opcional.** O Vercel guarda `AI_API_KEY`; o navegador nunca recebe essa chave. O app chama `/api/ai`, que valida o JWT do Supabase, aplica limite de 30 perguntas/min por usuário e repassa a pergunta ao provedor. Quem preferir pode salvar a própria chave em Perfil; ela fica no `localStorage` daquele navegador e tem prioridade sobre a chave do servidor. Com a IA ligada, o provedor recebe a pergunta, o contexto de saúde descrito acima e, quando o usuário pede, a foto do prato. Sem a IA, os dados ficam só no Supabase. Nomes de alimentos fora da tabela são enviados ao Open Food Facts para consulta; os valores ficam no seu diário no Supabase.
 - **Dados de saúde (LGPD):** cada conta vê só os próprios dados. O app tem exportação e exclusão. O texto de consentimento deve passar por revisão jurídica antes de o app ser usado por mais pessoas.
 - **Fora desta versão:** lembretes, compartilhamento entre contas e exclusão da conta de login (o app apaga os dados, mas o usuário de autenticação continua existindo no Supabase).
 
@@ -163,7 +177,7 @@ Sem `AI_API_KEY`, o usuário ainda pode salvar a própria chave. Sem nenhuma cha
 - “o que posso jantar?”
 - “estou com dor/cansaço” (orienta procurar um profissional)
 
-Privacidade: só o texto da pergunta e, quando o usuário envia uma foto, a imagem do prato vão ao provedor; refeições, água, atividade e peso ficam no Supabase. Limite: 30 perguntas/min por usuário. O dono paga o uso da chave do servidor; quem usa a própria chave paga o próprio provedor. Acompanhe o gasto no provedor.
+Privacidade: com a IA ligada, a pergunta, o contexto de saúde (perfil, metas, refeições, água, atividades, peso e histórico) e, quando o usuário envia uma foto, a imagem do prato vão ao provedor. Tokens, chaves, senhas e e-mail não são enviados. Com a IA desligada, nada disso sai do app. Limite: 30 perguntas/min por usuário. O dono paga o uso da chave do servidor; quem usa a própria chave paga o próprio provedor. Acompanhe o gasto no provedor.
 
 Provedores e modelos padrão:
 

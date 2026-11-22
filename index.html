@@ -2325,6 +2325,174 @@ img,svg{display:block}
     return AI_SERVER;
   }
 
+  const AI_CONTEXT_MAX = 20000;
+
+  function aiMeal(meal) {
+    return {
+      label: meal.label,
+      at: meal.at,
+      kcal: round(meal.kcal),
+      protein: Number(meal.p) || 0,
+      carbs: Number(meal.c) || 0,
+      fat: Number(meal.f) || 0,
+      items: (meal.items || []).map((item) => ({
+        name: item.name,
+        grams: Number(item.grams) || 0,
+        kcal: Number(item.kcal) || 0,
+        protein: Number(item.p) || 0,
+        carbs: Number(item.c) || 0,
+        fat: Number(item.f) || 0,
+        source: item.source || undefined
+      }))
+    };
+  }
+
+  function aiActivity(activity) {
+    return {
+      at: activity.at,
+      name: activity.name,
+      workout: activity.workout || undefined,
+      intensity: activity.intensity || undefined,
+      minutes: Number(activity.minutes) || 0,
+      kcal: round(activity.kcal),
+      met: activity.met || undefined
+    };
+  }
+
+  function aiDay(key, data, full = false, totalsOverride = null) {
+    const totals = totalsOverride || dayTotals(key);
+    const activities = (data.activities || []).map(aiActivity);
+    return {
+      date: key,
+      waterMl: Number(data.waterMl) || 0,
+      weightKg: data.weightKg == null ? null : Number(data.weightKg),
+      totals: {
+        kcal: round(totals.kcal),
+        protein: +totals.protein.toFixed(1),
+        carbs: +totals.carbs.toFixed(1),
+        fat: +totals.fat.toFixed(1),
+        burnedKcal: round(totals.burned)
+      },
+      meals: full ? (data.meals || []).map(aiMeal) : (data.meals || []).length,
+      activities: full ? activities : activities.length
+    };
+  }
+
+  function aiDaySummary(key, data) {
+    const totals = dayTotals(key);
+    const minutes = (data.activities || []).reduce((acc, activity) => acc + (Number(activity.minutes) || 0), 0);
+    return [
+      key,
+      round(totals.kcal),
+      +totals.protein.toFixed(1),
+      +totals.carbs.toFixed(1),
+      +totals.fat.toFixed(1),
+      Number(data.waterMl) || 0,
+      round(minutes),
+      round(totals.burned),
+      data.weightKg == null ? null : Number(data.weightKg)
+    ];
+  }
+
+  function fitAIContext(context) {
+    const copy = JSON.parse(JSON.stringify(context));
+    let removed = 0;
+    const tooBig = () => JSON.stringify(copy).length > AI_CONTEXT_MAX;
+    while (tooBig()) {
+      if (copy.chat?.length) {
+        copy.chat.shift();
+        removed += 1;
+        continue;
+      }
+      if (copy.recentDays?.length) {
+        copy.recentDays.shift();
+        removed += 1;
+        continue;
+      }
+      if (copy.dailyHistory?.length > 1) {
+        copy.dailyHistory.shift();
+        removed += 1;
+        continue;
+      }
+      if (copy.weights?.length > 1) {
+        copy.weights.shift();
+        removed += 1;
+        continue;
+      }
+      break;
+    }
+    if (removed) copy.meta = { truncated: true, removed };
+    return copy;
+  }
+
+  function aiContext(question = "") {
+    if (!state) return {};
+    const target = state.targets || calcTargets(state.profile);
+    const todayKey = ymd();
+    const todayData = dayData(todayKey);
+    const totals = dayTotals(todayKey);
+    const dayKeys = Object.keys(state.days || {})
+      .filter((key) => {
+        const data = state.days[key];
+        return data && ((data.meals || []).length || (data.activities || []).length || Number(data.waterMl) || data.weightKg != null);
+      })
+      .sort();
+    const recentKeys = dayKeys.filter((key) => key !== todayKey).slice(-7);
+    const latest = latestWeight();
+    const weightHistory = (state.weights || []).map((entry) => [entry.date, Number(entry.kg)]);
+    const chat = (state.chat || [])
+      .filter((message) => !(message.role === "me" && message.text === question))
+      .slice(-12)
+      .map((message) => ({ role: message.role, text: message.text, at: message.at }));
+    const context = {
+      app: {
+        name: "Viva",
+        generatedAt: nowIso(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo"
+      },
+      profile: {
+        name: state.profile.name || "",
+        age: state.profile.age == null ? null : Number(state.profile.age),
+        heightCm: state.profile.heightCm == null ? null : Number(state.profile.heightCm),
+        weightKg: state.profile.weightKg == null ? null : Number(state.profile.weightKg),
+        goal: state.profile.goal || "maintain",
+        goalLabel: GOAL_LABELS[state.profile.goal] || state.profile.goal || "Manter o peso",
+        bmi: bmi(Number(state.profile.weightKg), Number(state.profile.heightCm)),
+        onboardedAt: state.profile.onboardedAt || null
+      },
+      targets: {
+        kcal: Number(target.kcal) || 0,
+        protein: Number(target.protein) || 0,
+        carbs: Number(target.carbs) || 0,
+        fat: Number(target.fat) || 0,
+        waterMl: Number(target.waterMl) || 2000
+      },
+      summary: {
+        latestWeightKg: latest,
+        bmi: bmi(Number(latest), Number(state.profile.heightCm)),
+        todayKcal: round(totals.kcal),
+        todayProtein: +totals.protein.toFixed(1),
+        todayCarbs: +totals.carbs.toFixed(1),
+        todayFat: +totals.fat.toFixed(1),
+        todayBurnedKcal: round(totals.burned),
+        todayWaterMl: Number(todayData.waterMl) || 0,
+        todayActivityMinutes: (todayData.activities || []).reduce((acc, activity) => acc + (Number(activity.minutes) || 0), 0),
+        remainingKcal: round(target.kcal - totals.kcal + totals.burned * 0.5),
+        remainingProtein: +Math.max(0, target.protein - totals.protein).toFixed(1),
+        daysWithData: dayKeys.length,
+        weightRecords: weightHistory.length
+      },
+      today: aiDay(todayKey, todayData, true, totals),
+      recentDays: recentKeys.map((key) => aiDay(key, state.days[key], true)),
+      dailyHistory: dayKeys.map((key) => aiDaySummary(key, state.days[key])),
+      historyColumns: ["date", "kcal", "protein", "carbs", "fat", "waterMl", "activityMinutes", "activityKcal", "weightKg"],
+      weights: weightHistory,
+      weightColumns: ["date", "kg"],
+      chat
+    };
+    return fitAIContext(context);
+  }
+
   async function askAI(question, options = {}) {
     if (!navigator.onLine) return "Você está offline. Tente de novo quando a conexão voltar.";
 
@@ -2350,7 +2518,7 @@ img,svg{display:block}
         }
         const provider = config.provider || "openai";
         const model = config.model || "";
-        const payload = { question, message: question, context: {}, provider, model };
+        const payload = { question, message: question, context: aiContext(question), provider, model };
         if (config.source === "own") payload.apiKey = config.key;
         if (options.image) payload.image = options.image;
         const res = await fetch(AI_ENDPOINT, {
@@ -2384,7 +2552,7 @@ img,svg{display:block}
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // Compatível com { message, context } -> { reply } e com { question } -> { answer }.
-        body: JSON.stringify({ question, message: question, context: {} })
+        body: JSON.stringify({ question, message: question, context: aiContext(question) })
       });
       if (res.status === 429) return "Muitas perguntas em pouco tempo. Espere um minuto e tente de novo.";
       if (res.status === 503) return "A IA ainda não está configurada no servidor. Avise quem publicou o app.";
@@ -2737,7 +2905,7 @@ img,svg{display:block}
       : "IA desligada — anotações e respostas locais";
     $("#ai-dot").dataset.on = String(ai);
     $("#chat-note").textContent = ai
-      ? `Só o texto da pergunta e, se enviar, a foto vão para ${label}. Nomes fora da tabela são buscados no Open Food Facts. Seus registros ficam no Supabase.`
+      ? `A pergunta, seu perfil, metas, refeições, água, atividades, peso e histórico vão para ${label}. Nomes fora da tabela são buscados no Open Food Facts. Seus registros ficam no Supabase.`
       : "Seus registros ficam no Supabase. Nomes de alimentos fora da tabela são buscados no Open Food Facts.";
   }
 
