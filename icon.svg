@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Viva">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f6f43"/>
+      <stop offset="1" stop-color="#0f3d24"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f6e7b4"/>
+      <stop offset="1" stop-color="#e8c96a"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M256 118c-58 34-92 84-92 138 0 54 41 92 92 92s92-38 92-92c0-54-34-104-92-138z" fill="url(#leaf)"/>
+  <path d="M256 168v188" stroke="#14532d" stroke-width="16" stroke-linecap="round"/>
+  <path d="M256 236c-18-22-44-30-68-26 6 30 30 52 68 58zM256 300c18-22 44-30 68-26-6 30-30 52-68 58z" fill="#14532d" opacity=".55"/>
+  <circle cx="256" cy="384" r="14" fill="#f6e7b4"/>
+</svg>

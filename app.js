@@ -1,0 +1,1544 @@
+(() => {
+  "use strict";
+
+  const CFG = window.VIVA_CONFIG || {};
+  const SB = String(CFG.SUPABASE_URL || "").replace(/\/+$/, "");
+  const KEY = String(CFG.SUPABASE_ANON_KEY || "");
+  const FN = CFG.AI_FUNCTION || "assistente";
+  const LS_SESSION = "viva.session.v2";
+  const LS_PKCE = "viva.pkce.v2";
+  const LS_VIEW = "viva.view.v2";
+  const VERSION = 2;
+  const SAVE_DELAY = 700;
+  const CHAT_MAX = 60;
+
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+  function h(tag, attrs, ...kids) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs || {})) {
+      if (value == null || value === false) continue;
+      if (key === "class") node.className = value;
+      else if (key === "dataset") Object.assign(node.dataset, value);
+      else if (key === "html") node.innerHTML = value;
+      else if (key.startsWith("on") && typeof value === "function") node.addEventListener(key.slice(2).toLowerCase(), value);
+      else node.setAttribute(key, value === true ? "" : value);
+    }
+    for (const kid of kids.flat(4)) {
+      if (kid == null || kid === false) continue;
+      node.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+    }
+    return node;
+  }
+
+  const nowIso = () => new Date().toISOString();
+  const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+  const round = (n) => Math.round(n);
+
+  function parseNum(value) {
+    if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+    if (value == null) return NaN;
+    let s = String(value).trim().toLowerCase().replace(/\s+/g, "").replace(/(kg|cm|ml|kcal|anos?|litros?|l)$/g, "");
+    if (!s) return NaN;
+    if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+    const n = Number(s);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  function normalize(text) {
+    return String(text || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s,.]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function ymd(date = new Date()) {
+    const d = new Date(date);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function parseYmd(key) {
+    const [y, m, d] = key.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+
+  function addDays(date, days) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return d;
+  }
+
+  function fmtDay(date) {
+    return new Date(date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
+  }
+
+  function fmtLong(date) {
+    return new Date(date).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+  }
+
+  function fmtTime(iso) {
+    return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function nf(n) {
+    return Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+  }
+
+  function nf1(n) {
+    return Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+  }
+
+  // Mifflin-St Jeor com a média das constantes masculina (+5) e feminina (-161).
+  const ACTIVITY = 1.5;
+  const GOAL_DELTA = { lose: -400, maintain: 0, gain: 300 };
+  const PROTEIN_PER_KG = { lose: 1.6, maintain: 1.3, gain: 1.8 };
+  const FAT_RATIO = 0.27;
+
+  function calcTargets({ age, heightCm, weightKg, goal }) {
+    const bmr = 10 * weightKg + 6.25 * heightCm - 5 * age - 78;
+    const kcal = Math.max(1200, round((bmr * ACTIVITY + (GOAL_DELTA[goal] ?? 0)) / 10) * 10);
+    const protein = round(weightKg * (PROTEIN_PER_KG[goal] ?? 1.3));
+    const fat = round((kcal * FAT_RATIO) / 9);
+    const carbs = Math.max(0, round((kcal - protein * 4 - fat * 9) / 4));
+    const waterMl = round((weightKg * 35) / 50) * 50;
+    return { kcal, protein, carbs, fat, waterMl };
+  }
+
+  function bmi(weightKg, heightCm) {
+    if (!weightKg || !heightCm) return null;
+    return +(weightKg / ((heightCm / 100) ** 2)).toFixed(1);
+  }
+
+  function validateProfile(p) {
+    const errors = {};
+    if (!(p.age >= 14 && p.age <= 100)) errors.age = "Informe uma idade entre 14 e 100 anos.";
+    if (!(p.heightCm >= 120 && p.heightCm <= 230)) errors.height = "Informe uma altura entre 120 e 230 cm.";
+    if (!(p.weightKg >= 30 && p.weightKg <= 300)) errors.weight = "Informe um peso entre 30 e 300 kg.";
+    if (!["lose", "maintain", "gain"].includes(p.goal)) errors.goal = "Escolha um objetivo.";
+    return errors;
+  }
+
+  function emptyState() {
+    return {
+      version: VERSION,
+      profile: { name: "", age: null, heightCm: null, weightKg: null, goal: "maintain", aiEnabled: false, onboardedAt: null },
+      targets: null,
+      days: {},
+      weights: [],
+      chat: [],
+      createdAt: nowIso()
+    };
+  }
+
+  function emptyDay() {
+    return { meals: [], waterMl: 0, activities: [], weightKg: null };
+  }
+
+  function migrate(raw) {
+    const base = emptyState();
+    if (!raw || typeof raw !== "object") return base;
+    const state = {
+      ...base,
+      ...raw,
+      profile: { ...base.profile, ...(raw.profile || {}) },
+      targets: raw.targets && typeof raw.targets === "object" ? raw.targets : null,
+      days: raw.days && typeof raw.days === "object" ? raw.days : {},
+      weights: Array.isArray(raw.weights) ? raw.weights : [],
+      chat: Array.isArray(raw.chat) ? raw.chat.slice(-CHAT_MAX) : []
+    };
+    for (const key of Object.keys(state.days)) {
+      state.days[key] = { ...emptyDay(), ...(state.days[key] || {}) };
+      state.days[key].meals = Array.isArray(state.days[key].meals) ? state.days[key].meals : [];
+      state.days[key].activities = Array.isArray(state.days[key].activities) ? state.days[key].activities : [];
+      state.days[key].waterMl = Number(state.days[key].waterMl) || 0;
+    }
+    return state;
+  }
+
+  let state = null;
+  let user = null;
+  let currentView = "hoje";
+  let saveTimer = null;
+  let saving = false;
+  let dirty = false;
+  let chatBusy = false;
+  let deleteArmed = 0;
+  let installPrompt = null;
+  const waterUndo = [];
+
+  class ApiError extends Error {
+    constructor(kind, status, payload) {
+      super(kind);
+      this.kind = kind;
+      this.status = status;
+      this.payload = payload;
+    }
+  }
+
+  async function safeJson(res) {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  function loadSession() {
+    try {
+      return JSON.parse(localStorage.getItem(LS_SESSION) || "null");
+    } catch {
+      return null;
+    }
+  }
+
+  function storeSession(session) {
+    if (session) localStorage.setItem(LS_SESSION, JSON.stringify(session));
+    else localStorage.removeItem(LS_SESSION);
+  }
+
+  function normalizeSession(payload) {
+    const meta = payload?.user?.user_metadata || {};
+    return {
+      access_token: payload.access_token,
+      refresh_token: payload.refresh_token,
+      expires_at: Date.now() + (Number(payload.expires_in) || 3600) * 1000,
+      user: {
+        id: payload?.user?.id || "",
+        email: payload?.user?.email || "",
+        name: meta.full_name || meta.name || "",
+        avatar: meta.avatar_url || ""
+      }
+    };
+  }
+
+  async function tokenRequest(grant, body) {
+    const res = await fetch(`${SB}/auth/v1/token?grant_type=${grant}`, {
+      method: "POST",
+      headers: { apikey: KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new ApiError("auth", res.status, await safeJson(res));
+    return normalizeSession(await res.json());
+  }
+
+  async function ensureSession() {
+    let session = loadSession();
+    if (!session) return null;
+    if (!session.expires_at || Date.now() > session.expires_at - 60_000) {
+      if (!session.refresh_token) {
+        storeSession(null);
+        return null;
+      }
+      try {
+        session = await tokenRequest("refresh_token", { refresh_token: session.refresh_token });
+        storeSession(session);
+      } catch {
+        storeSession(null);
+        return null;
+      }
+    }
+    return session;
+  }
+
+  async function apiFetch(path, options = {}, retry = true) {
+    const session = await ensureSession();
+    if (!session) throw new ApiError("no_session", 401);
+    const headers = { ...(options.headers || {}), apikey: KEY, Authorization: `Bearer ${session.access_token}` };
+    const res = await fetch(SB + path, { ...options, headers });
+    if (res.status === 401 && retry && session.refresh_token) {
+      try {
+        const fresh = await tokenRequest("refresh_token", { refresh_token: session.refresh_token });
+        storeSession(fresh);
+        return apiFetch(path, options, false);
+      } catch {
+        storeSession(null);
+        throw new ApiError("no_session", 401);
+      }
+    }
+    return res;
+  }
+
+  function b64url(bytes) {
+    let s = "";
+    for (const byte of bytes) s += String.fromCharCode(byte);
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function randomVerifier() {
+    const bytes = new Uint8Array(48);
+    crypto.getRandomValues(bytes);
+    return b64url(bytes);
+  }
+
+  async function pkceChallenge(verifier) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    return b64url(new Uint8Array(digest));
+  }
+
+  async function loadRemote() {
+    const res = await apiFetch(`/rest/v1/viva_data?select=user_id,data,updated_at&user_id=eq.${user.id}`, {
+      headers: { Accept: "application/json" }
+    });
+    if (!res.ok) throw new ApiError("load", res.status, await safeJson(res));
+    const rows = await res.json();
+    if (!Array.isArray(rows) || !rows.length) return null;
+    return rows[0].data;
+  }
+
+  function setSync(status) {
+    const el = $("#sync-status");
+    if (!el) return;
+    const labels = { saved: "Salvo", saving: "Salvando…", error: "Não salvou", offline: "Offline" };
+    el.dataset.state = status;
+    el.textContent = labels[status] || "Salvo";
+  }
+
+  async function saveNow() {
+    if (!user || !state) return false;
+    if (!navigator.onLine) {
+      dirty = true;
+      setSync("offline");
+      return false;
+    }
+    clearTimeout(saveTimer);
+    saving = true;
+    setSync("saving");
+    const payload = { ...state, updatedAt: nowIso() };
+    try {
+      const res = await apiFetch("/rest/v1/viva_data?on_conflict=user_id", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ user_id: user.id, data: payload })
+      });
+      if (!res.ok) throw new ApiError("save", res.status, await safeJson(res));
+      state.updatedAt = payload.updatedAt;
+      dirty = false;
+      setSync("saved");
+      return true;
+    } catch (err) {
+      dirty = true;
+      setSync("error");
+      if (err.status === 401) sessionLost();
+      return false;
+    } finally {
+      saving = false;
+    }
+  }
+
+  function queueSave(delay = SAVE_DELAY) {
+    dirty = true;
+    setSync(navigator.onLine ? "saving" : "offline");
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, delay);
+  }
+
+  let toastTimer = null;
+  function toast(message) {
+    const el = $("#toast");
+    el.textContent = message;
+    el.dataset.show = "true";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.dataset.show = "false"; }, 2800);
+  }
+
+  const SCREENS = ["boot", "screen-config", "screen-login", "screen-onboarding", "screen-main"];
+  function show(id) {
+    for (const name of SCREENS) {
+      const el = document.getElementById(name);
+      if (el) el.hidden = name !== id;
+    }
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  function sessionLost() {
+    storeSession(null);
+    state = null;
+    user = null;
+    show("screen-login");
+    toast("Sua sessão expirou. Entre de novo.");
+  }
+
+  async function startLogin() {
+    const verifier = randomVerifier();
+    const challenge = await pkceChallenge(verifier);
+    const redirectTo = location.origin + location.pathname;
+    sessionStorage.setItem(LS_PKCE, JSON.stringify({ verifier, redirectTo, at: Date.now() }));
+    const params = new URLSearchParams({
+      provider: "google",
+      redirect_to: redirectTo,
+      code_challenge: challenge,
+      code_challenge_method: "s256"
+    });
+    location.assign(`${SB}/auth/v1/authorize?${params.toString()}`);
+  }
+
+  async function handleCallback() {
+    const params = new URLSearchParams(location.search);
+    const code = params.get("code");
+    const error = params.get("error");
+    if (!code && !error) return false;
+
+    const stored = sessionStorage.getItem(LS_PKCE);
+    sessionStorage.removeItem(LS_PKCE);
+    history.replaceState({}, "", location.pathname + location.hash);
+
+    if (error) {
+      show("screen-login");
+      toast(params.get("error_description") || "Login cancelado.");
+      return true;
+    }
+    if (!stored) {
+      show("screen-login");
+      toast("Sessão de login expirada. Tente novamente.");
+      return true;
+    }
+    try {
+      const { verifier } = JSON.parse(stored);
+      const session = await tokenRequest("pkce", { auth_code: code, code_verifier: verifier });
+      storeSession(session);
+      user = session.user;
+      show("boot");
+      await enterApp();
+    } catch {
+      show("screen-login");
+      toast("Não foi possível concluir o login. Tente de novo.");
+    }
+    return true;
+  }
+
+  async function enterApp() {
+    const data = await loadRemote();
+    if (!data || !data.profile || !data.profile.onboardedAt) {
+      state = migrate(data);
+      prepareOnboarding();
+      show("screen-onboarding");
+      return;
+    }
+    state = migrate(data);
+    if (!state.targets && state.profile.weightKg) state.targets = calcTargets(state.profile);
+    showMain();
+  }
+
+  function showMain() {
+    show("screen-main");
+    setView(currentView || localStorage.getItem(LS_VIEW) || "hoje");
+    renderAll();
+  }
+
+  function setView(view) {
+    const names = ["hoje", "diario", "viva", "perfil"];
+    currentView = names.includes(view) ? view : "hoje";
+    localStorage.setItem(LS_VIEW, currentView);
+    for (const panel of $$("[data-view-panel]")) panel.hidden = panel.dataset.viewPanel !== currentView;
+    for (const btn of $$("[data-view]")) {
+      if (btn.dataset.view === currentView) btn.setAttribute("aria-current", "page");
+      else btn.removeAttribute("aria-current");
+    }
+    history.replaceState({}, "", `${location.pathname}${location.search}#${currentView}`);
+    if (currentView === "diario") renderDiary();
+    if (currentView === "perfil") renderProfile();
+    if (currentView === "viva") renderChat();
+    if (currentView === "hoje") renderToday();
+  }
+
+  async function logout() {
+    const session = loadSession();
+    if (session) {
+      try {
+        await fetch(`${SB}/auth/v1/logout`, {
+          method: "POST",
+          headers: { apikey: KEY, Authorization: `Bearer ${session.access_token}` }
+        });
+      } catch { /* sair localmente mesmo sem rede */ }
+    }
+    storeSession(null);
+    state = null;
+    user = null;
+    show("screen-login");
+  }
+
+  function prepareOnboarding() {
+    const form = $("#onb-form");
+    if (form) form.reset();
+    $("#onb-error").hidden = true;
+    for (const id of ["onb-age", "onb-height", "onb-weight"]) $("#" + id).removeAttribute("aria-invalid");
+    updateOnboardingPreview();
+  }
+
+  function readOnboarding() {
+    return {
+      name: $("#onb-name").value.trim().slice(0, 40),
+      age: parseNum($("#onb-age").value),
+      heightCm: parseNum($("#onb-height").value),
+      weightKg: parseNum($("#onb-weight").value),
+      goal: ($("input[name=goal]:checked") || {}).value || "maintain"
+    };
+  }
+
+  function updateOnboardingPreview() {
+    const p = readOnboarding();
+    const valid = !Object.keys(validateProfile(p)).length;
+    $("#onb-preview-kcal").textContent = valid ? nf(calcTargets(p).kcal) : "—";
+    $("#onb-preview-protein").textContent = valid ? nf(calcTargets(p).protein) : "—";
+    $("#onb-preview-water").textContent = valid ? nf1(calcTargets(p).waterMl / 1000) : "—";
+    $("#onb-preview-bmi").textContent = valid ? nf1(bmi(p.weightKg, p.heightCm)) : "—";
+  }
+
+  function markFields(errors, map) {
+    for (const [key, id] of Object.entries(map)) {
+      const input = $("#" + id);
+      if (!input) continue;
+      if (errors[key]) input.setAttribute("aria-invalid", "true");
+      else input.removeAttribute("aria-invalid");
+    }
+  }
+
+  async function submitOnboarding(event) {
+    event.preventDefault();
+    const profile = readOnboarding();
+    const errors = validateProfile(profile);
+    markFields(errors, { age: "onb-age", height: "onb-height", weight: "onb-weight" });
+    const errorBox = $("#onb-error");
+    if (Object.keys(errors).length) {
+      errorBox.textContent = Object.values(errors)[0];
+      errorBox.hidden = false;
+      return;
+    }
+    errorBox.hidden = true;
+    const button = $("#onb-submit");
+    button.disabled = true;
+    button.textContent = "Salvando…";
+    state = emptyState();
+    state.profile = { ...profile, aiEnabled: false, onboardedAt: nowIso() };
+    state.targets = calcTargets(profile);
+    state.weights = [{ date: ymd(), kg: profile.weightKg }];
+    const ok = await saveNow();
+    button.disabled = false;
+    button.textContent = "Criar minhas metas";
+    if (!ok) {
+      errorBox.textContent = "Não consegui salvar agora. Verifique a conexão e tente de novo.";
+      errorBox.hidden = false;
+      return;
+    }
+    showMain();
+    toast("Metas criadas. Bom começo!");
+  }
+
+  async function submitProfile(event) {
+    event.preventDefault();
+    const profile = {
+      ...state.profile,
+      name: $("#pf-name").value.trim().slice(0, 40),
+      age: parseNum($("#pf-age").value),
+      heightCm: parseNum($("#pf-height").value),
+      weightKg: parseNum($("#pf-weight").value),
+      goal: $("#pf-goal").value
+    };
+    const errors = validateProfile(profile);
+    markFields(errors, { age: "pf-age", height: "pf-height", weight: "pf-weight" });
+    const errorBox = $("#profile-error");
+    if (Object.keys(errors).length) {
+      errorBox.textContent = Object.values(errors)[0];
+      errorBox.hidden = false;
+      return;
+    }
+    errorBox.hidden = true;
+    const previousWeight = state.profile.weightKg;
+    state.profile = profile;
+    state.targets = calcTargets(profile);
+    if (profile.weightKg !== previousWeight) recordWeight(profile.weightKg);
+    renderAll();
+    const ok = await saveNow();
+    toast(ok ? "Metas recalculadas." : "Não consegui salvar. Tente de novo.");
+  }
+
+  function uid() {
+    return crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function dayData(key = ymd()) {
+    if (!state.days[key]) state.days[key] = emptyDay();
+    return state.days[key];
+  }
+
+  function dayTotals(key = ymd()) {
+    const d = dayData(key);
+    const totals = { kcal: 0, protein: 0, carbs: 0, fat: 0, burned: 0 };
+    for (const meal of d.meals) {
+      totals.kcal += Number(meal.kcal) || 0;
+      totals.protein += Number(meal.p) || 0;
+      totals.carbs += Number(meal.c) || 0;
+      totals.fat += Number(meal.f) || 0;
+    }
+    for (const act of d.activities) totals.burned += Number(act.kcal) || 0;
+    return totals;
+  }
+
+  function addWater(ml) {
+    const d = dayData();
+    d.waterMl = Math.max(0, (Number(d.waterMl) || 0) + ml);
+    waterUndo.push(ml);
+    queueSave();
+    renderToday();
+  }
+
+  function undoWater() {
+    const last = waterUndo.pop();
+    if (last == null) {
+      toast("Nada para desfazer.");
+      return;
+    }
+    const d = dayData();
+    d.waterMl = Math.max(0, (Number(d.waterMl) || 0) - last);
+    queueSave();
+    renderToday();
+  }
+
+  function addMeal(items, label) {
+    const totals = items.reduce((acc, item) => ({
+      kcal: acc.kcal + item.kcal,
+      p: acc.p + item.p,
+      c: acc.c + item.c,
+      f: acc.f + item.f
+    }), { kcal: 0, p: 0, c: 0, f: 0 });
+    const meal = {
+      id: uid(),
+      at: nowIso(),
+      label,
+      items,
+      kcal: round(totals.kcal),
+      p: +totals.p.toFixed(1),
+      c: +totals.c.toFixed(1),
+      f: +totals.f.toFixed(1)
+    };
+    dayData().meals.push(meal);
+    queueSave();
+    renderToday();
+    return meal;
+  }
+
+  function addActivity(activity) {
+    const entry = { id: uid(), at: nowIso(), ...activity, kcal: round(activity.kcal) };
+    dayData().activities.push(entry);
+    queueSave();
+    renderToday();
+    return entry;
+  }
+
+  function recordWeight(kg) {
+    state.weights = state.weights.filter((w) => w.date !== ymd());
+    state.weights.push({ date: ymd(), kg });
+    state.weights.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    state.weights = state.weights.slice(-400);
+    queueSave();
+    renderToday();
+    renderDiary();
+  }
+
+  function latestWeight() {
+    const list = state.weights || [];
+    return list.length ? Number(list[list.length - 1].kg) : Number(state.profile.weightKg) || null;
+  }
+
+  // Valores por 100 g. Fontes: TACO 4ª ed. (NEPA/UNICAMP) e USDA FoodData Central. "src" e "ref" identificam a origem.
+  const FOODS = [
+    { id: "arroz-branco", name: "Arroz branco cozido", aliases: ["arroz", "arroz branco"], portion: 100, kcal: 128.3, p: 2.5, c: 28.1, f: 0.2, src: "TACO", ref: "3" },
+    { id: "arroz-integral", name: "Arroz integral cozido", aliases: ["arroz integral"], portion: 100, kcal: 123.5, p: 2.6, c: 25.8, f: 1, src: "TACO", ref: "1" },
+    { id: "feijao-carioca", name: "Feijão carioca cozido", aliases: ["feijao", "feijão"], portion: 100, kcal: 76.4, p: 4.8, c: 13.6, f: 0.5, src: "TACO", ref: "561" },
+    { id: "feijao-preto", name: "Feijão preto cozido", aliases: ["feijao preto"], portion: 100, kcal: 77, p: 4.5, c: 14, f: 0.5, src: "TACO", ref: "567" },
+    { id: "macarrao", name: "Macarrão cozido", aliases: ["macarrao", "massa"], portion: 100, kcal: 158, p: 5.8, c: 30.9, f: 0.9, src: "USDA", ref: "169737" },
+    { id: "pao-frances", name: "Pão francês", aliases: ["pao", "pão", "pao frances"], portion: 50, kcal: 299.8, p: 8, c: 58.6, f: 3.1, src: "TACO", ref: "53" },
+    { id: "pao-integral", name: "Pão de forma integral", aliases: ["pao integral", "pao de forma", "pao de forma integral"], portion: 25, kcal: 253.2, p: 9.4, c: 49.9, f: 3.7, src: "TACO", ref: "52" },
+    { id: "tapioca", name: "Tapioca com manteiga", aliases: ["tapioca", "goma de tapioca", "tapioca com manteiga"], portion: 60, kcal: 347.8, p: 0.1, c: 63.6, f: 10.9, src: "TACO", ref: "551" },
+    { id: "cuscuz", name: "Cuscuz de milho cozido", aliases: ["cuscuz"], portion: 100, kcal: 113.5, p: 2.2, c: 25.3, f: 0.7, src: "TACO", ref: "533" },
+    { id: "aveia", name: "Aveia em flocos", aliases: ["aveia"], portion: 30, kcal: 393.8, p: 13.9, c: 66.6, f: 8.5, src: "TACO", ref: "7" },
+    { id: "granola", name: "Granola", aliases: ["granola"], portion: 30, kcal: 489, p: 13.7, c: 53.9, f: 24.3, src: "USDA", ref: "171646" },
+    { id: "batata-doce", name: "Batata-doce cozida", aliases: ["batata doce"], portion: 100, kcal: 76.8, p: 0.6, c: 18.4, f: 0.1, src: "TACO", ref: "88" },
+    { id: "batata", name: "Batata cozida", aliases: ["batata", "batata inglesa"], portion: 100, kcal: 51.6, p: 1.2, c: 11.9, f: 0, src: "TACO", ref: "91" },
+    { id: "mandioca", name: "Mandioca cozida", aliases: ["mandioca", "aipim"], portion: 100, kcal: 125.4, p: 0.6, c: 30.1, f: 0.3, src: "TACO", ref: "129" },
+    { id: "pure", name: "Purê de batata", aliases: ["pure", "purê"], portion: 100, kcal: 113, p: 1.9, c: 16.8, f: 4.2, src: "USDA", ref: "168555" },
+    { id: "farofa", name: "Farofa de mandioca", aliases: ["farofa", "farofa de mandioca"], portion: 50, kcal: 405.7, p: 2.1, c: 80.3, f: 9.1, src: "TACO", ref: "131" },
+    { id: "ovo-cozido", name: "Ovo cozido", aliases: ["ovo", "ovos", "ovo cozido", "ovo de galinha"], portion: 50, kcal: 145.7, p: 13.3, c: 0.6, f: 9.5, src: "TACO", ref: "488" },
+    { id: "ovo-frito", name: "Ovo frito", aliases: ["ovo frito"], portion: 50, kcal: 240.2, p: 15.6, c: 1.2, f: 18.6, src: "TACO", ref: "490" },
+    { id: "frango-peito", name: "Frango grelhado", aliases: ["frango", "peito de frango", "file de frango"], portion: 100, kcal: 159.2, p: 32, c: 0, f: 2.5, src: "TACO", ref: "410" },
+    { id: "frango-coxa", name: "Frango assado (sobrecoxa sem pele)", aliases: ["coxa de frango", "sobrecoxa", "frango assado"], portion: 100, kcal: 232.9, p: 29.2, c: 0, f: 12, src: "TACO", ref: "413" },
+    { id: "patinho", name: "Carne bovina grelhada", aliases: ["carne", "bife", "patinho"], portion: 100, kcal: 219.3, p: 35.9, c: 0, f: 7.3, src: "TACO", ref: "377" },
+    { id: "acem", name: "Acém cozido", aliases: ["acem", "acém", "carne cozida"], portion: 100, kcal: 212.4, p: 26.7, c: 0, f: 10.9, src: "TACO", ref: "326" },
+    { id: "lombo", name: "Lombo suíno", aliases: ["lombo", "carne de porco", "porco"], portion: 100, kcal: 210.2, p: 35.7, c: 0, f: 6.4, src: "TACO", ref: "432" },
+    { id: "tilapia", name: "Tilápia grelhada", aliases: ["tilapia", "peixe"], portion: 100, kcal: 128, p: 26.1, c: 0, f: 2.6, src: "USDA", ref: "175177" },
+    { id: "salmao", name: "Salmão grelhado", aliases: ["salmao"], portion: 100, kcal: 242.7, p: 26.1, c: 0, f: 14.5, src: "TACO", ref: "317" },
+    { id: "atum", name: "Atum em água", aliases: ["atum"], portion: 100, kcal: 116, p: 25.5, c: 0, f: 0.8, src: "USDA", ref: "171986" },
+    { id: "sardinha", name: "Sardinha em óleo", aliases: ["sardinha", "sardinha em óleo"], portion: 100, kcal: 285, p: 15.9, c: 0, f: 24, src: "TACO", ref: "319" },
+    { id: "camarao", name: "Camarão cozido", aliases: ["camarao"], portion: 100, kcal: 90, p: 19, c: 0, f: 1, src: "TACO", ref: "284" },
+    { id: "linguica", name: "Linguiça de porco grelhada", aliases: ["linguica", "linguiça", "linguiça de porco"], portion: 50, kcal: 296.5, p: 23.2, c: 0, f: 21.9, src: "TACO", ref: "423" },
+    { id: "presunto", name: "Presunto", aliases: ["presunto"], portion: 30, kcal: 93.7, p: 14.3, c: 2.1, f: 2.7, src: "TACO", ref: "439" },
+    { id: "queijo-mucarela", name: "Queijo muçarela", aliases: ["queijo", "mucarela", "mussarela", "queijo mucarela"], portion: 30, kcal: 329.9, p: 22.6, c: 3, f: 25.2, src: "TACO", ref: "463" },
+    { id: "queijo-minas", name: "Queijo minas", aliases: ["queijo minas", "queijo frescal"], portion: 30, kcal: 264.3, p: 17.4, c: 3.2, f: 20.2, src: "TACO", ref: "461" },
+    { id: "requeijao", name: "Requeijão", aliases: ["requeijao"], portion: 30, kcal: 256.6, p: 9.6, c: 2.4, f: 23.4, src: "TACO", ref: "468" },
+    { id: "iogurte", name: "Iogurte natural", aliases: ["iogurte", "iogurte natural"], portion: 170, kcal: 51.5, p: 4.1, c: 1.9, f: 3, src: "TACO", ref: "448" },
+    { id: "iogurte-grego", name: "Iogurte grego zero", aliases: ["iogurte grego", "iogurte grego zero"], portion: 170, kcal: 59, p: 10.2, c: 3.6, f: 0.4, src: "USDA", ref: "170894" },
+    { id: "leite", name: "Leite integral", aliases: ["leite", "leite integral"], portion: 200, kcal: 61, p: 3.1, c: 4.8, f: 3.2, src: "USDA", ref: "171265" },
+    { id: "leite-desnatado", name: "Leite desnatado", aliases: ["leite desnatado"], portion: 200, kcal: 34, p: 3.4, c: 5, f: 0.1, src: "USDA", ref: "171269" },
+    { id: "leite-aveia", name: "Leite de aveia", aliases: ["leite de aveia"], portion: 200, kcal: 45, p: 0.7, c: 5.4, f: 2.3, src: "USDA", ref: "2705412" },
+    { id: "whey", name: "Whey protein", aliases: ["whey", "whey protein"], portion: 30, kcal: 352, p: 78.1, c: 6.2, f: 1.6, src: "USDA", ref: "173180" },
+    { id: "banana", name: "Banana", aliases: ["banana", "banana prata"], portion: 70, kcal: 98.2, p: 1.3, c: 26, f: 0.1, src: "TACO", ref: "182" },
+    { id: "maca", name: "Maçã", aliases: ["maca", "maçã"], portion: 130, kcal: 55.5, p: 0.3, c: 15.2, f: 0, src: "TACO", ref: "222" },
+    { id: "laranja", name: "Laranja", aliases: ["laranja"], portion: 130, kcal: 36.8, p: 1, c: 8.9, f: 0.1, src: "TACO", ref: "214" },
+    { id: "mamao", name: "Mamão", aliases: ["mamao"], portion: 150, kcal: 45.3, p: 0.8, c: 11.6, f: 0.1, src: "TACO", ref: "225" },
+    { id: "manga", name: "Manga", aliases: ["manga"], portion: 130, kcal: 72.5, p: 0.4, c: 19.4, f: 0.2, src: "TACO", ref: "229" },
+    { id: "melancia", name: "Melancia", aliases: ["melancia"], portion: 200, kcal: 32.6, p: 0.9, c: 8.1, f: 0, src: "TACO", ref: "235" },
+    { id: "uva", name: "Uva", aliases: ["uva"], portion: 100, kcal: 52.9, p: 0.7, c: 13.6, f: 0.2, src: "TACO", ref: "256" },
+    { id: "morango", name: "Morango", aliases: ["morango"], portion: 100, kcal: 30.1, p: 0.9, c: 6.8, f: 0.3, src: "TACO", ref: "239" },
+    { id: "abacaxi", name: "Abacaxi", aliases: ["abacaxi"], portion: 100, kcal: 48.3, p: 0.9, c: 12.3, f: 0.1, src: "TACO", ref: "164" },
+    { id: "abacate", name: "Abacate", aliases: ["abacate"], portion: 100, kcal: 96.2, p: 1.2, c: 6, f: 8.4, src: "TACO", ref: "163" },
+    { id: "pera", name: "Pera", aliases: ["pera"], portion: 130, kcal: 57, p: 0.4, c: 15.2, f: 0.1, src: "USDA", ref: "169118" },
+    { id: "salada", name: "Alface crespa", aliases: ["salada", "salada de folhas", "alface"], portion: 50, kcal: 10.7, p: 1.3, c: 1.7, f: 0.2, src: "TACO", ref: "78" },
+    { id: "tomate", name: "Tomate", aliases: ["tomate"], portion: 100, kcal: 15.3, p: 1.1, c: 3.1, f: 0.2, src: "TACO", ref: "157" },
+    { id: "cenoura", name: "Cenoura", aliases: ["cenoura"], portion: 100, kcal: 34.1, p: 1.3, c: 7.7, f: 0.2, src: "TACO", ref: "110" },
+    { id: "brocolis", name: "Brócolis", aliases: ["brocolis"], portion: 100, kcal: 24.6, p: 2.1, c: 4.4, f: 0.5, src: "TACO", ref: "100" },
+    { id: "abobrinha", name: "Abobrinha", aliases: ["abobrinha"], portion: 100, kcal: 15, p: 1.1, c: 3, f: 0.2, src: "TACO", ref: "70" },
+    { id: "cafe", name: "Café sem açúcar", aliases: ["cafe", "café", "café sem açúcar"], portion: 50, kcal: 9.1, p: 0.7, c: 1.5, f: 0.1, src: "TACO", ref: "471" },
+    { id: "suco-laranja", name: "Suco de laranja", aliases: ["suco", "suco de laranja"], portion: 200, kcal: 32.7, p: 0.7, c: 7.6, f: 0.1, src: "TACO", ref: "215" },
+    { id: "refrigerante", name: "Refrigerante", aliases: ["refrigerante", "coca", "coca-cola"], portion: 350, kcal: 33.5, p: 0, c: 8.7, f: 0, src: "TACO", ref: "480" },
+    { id: "agua-coco", name: "Água de coco", aliases: ["agua de coco", "água de coco"], portion: 200, kcal: 21.5, p: 0, c: 5.3, f: 0, src: "TACO", ref: "478" },
+    { id: "azeite", name: "Azeite de oliva", aliases: ["azeite", "azeite de oliva"], portion: 10, kcal: 884, p: 0, c: 0, f: 100, src: "TACO", ref: "260" },
+    { id: "manteiga", name: "Manteiga", aliases: ["manteiga"], portion: 10, kcal: 726, p: 0.4, c: 0.1, f: 82.4, src: "TACO", ref: "261" },
+    { id: "margarina", name: "Margarina com sal", aliases: ["margarina"], portion: 10, kcal: 596.1, p: 0, c: 0, f: 67.4, src: "TACO", ref: "263" },
+    { id: "creme-leite", name: "Creme de leite", aliases: ["creme de leite"], portion: 15, kcal: 221.5, p: 1.5, c: 4.5, f: 22.5, src: "TACO", ref: "447" },
+    { id: "chocolate", name: "Chocolate ao leite", aliases: ["chocolate"], portion: 25, kcal: 539.6, p: 7.2, c: 59.6, f: 30.3, src: "TACO", ref: "495" },
+    { id: "bolo", name: "Bolo de chocolate", aliases: ["bolo"], portion: 60, kcal: 410, p: 6.2, c: 54.7, f: 18.5, src: "TACO", ref: "16" },
+    { id: "sorvete", name: "Sorvete de baunilha", aliases: ["sorvete", "sorvete de baunilha"], portion: 60, kcal: 207, p: 3.5, c: 23.6, f: 11, src: "USDA", ref: "167575" },
+    { id: "biscoito", name: "Biscoito recheado", aliases: ["biscoito", "bolacha"], portion: 30, kcal: 471.8, p: 6.4, c: 70.5, f: 19.6, src: "TACO", ref: "9" },
+    { id: "pao-queijo", name: "Pão de queijo", aliases: ["pao de queijo"], portion: 40, kcal: 363.1, p: 5.1, c: 34.2, f: 24.6, src: "TACO", ref: "140" },
+    { id: "coxinha", name: "Coxinha", aliases: ["coxinha", "salgado"], portion: 80, kcal: 283, p: 9.6, c: 34.5, f: 11.8, src: "TACO", ref: "386" },
+    { id: "pizza", name: "Pizza de muçarela", aliases: ["pizza", "pizza de muçarela", "pizza de mussarela"], portion: 100, kcal: 266, p: 11.4, c: 33.3, f: 9.7, src: "USDA", ref: "2708616" },
+    { id: "hamburguer", name: "Hambúrguer bovino grelhado", aliases: ["hamburguer", "hambúrguer", "hambúrguer bovino"], portion: 120, kcal: 209.8, p: 13.2, c: 11.3, f: 12.4, src: "TACO", ref: "417" },
+    { id: "sanduiche", name: "Sanduíche de frango grelhado", aliases: ["sanduiche", "sanduíche", "sanduíche de frango"], portion: 150, kcal: 226, p: 21.5, c: 19.4, f: 6.2, src: "USDA", ref: "2707005" },
+    { id: "sopa", name: "Sopa de legumes", aliases: ["sopa", "sopa de legumes"], portion: 300, kcal: 27, p: 0.8, c: 5.1, f: 0.5, src: "USDA", ref: "2710113" },
+    { id: "sushi", name: "Sushi de salmão", aliases: ["sushi", "sushi de salmão"], portion: 30, kcal: 103, p: 6.9, c: 15.3, f: 1.3, src: "USDA", ref: "2708963" },
+    { id: "amendoim", name: "Amendoim torrado", aliases: ["amendoim", "amendoim torrado"], portion: 30, kcal: 605.8, p: 22.5, c: 18.7, f: 54, src: "TACO", ref: "558" },
+    { id: "castanha-caju", name: "Castanha de caju", aliases: ["castanha", "castanha de caju"], portion: 30, kcal: 570.2, p: 18.5, c: 29.1, f: 46.3, src: "TACO", ref: "588" },
+    { id: "castanha-para", name: "Castanha-do-pará", aliases: ["castanha do para", "castanha-do-pará", "castanha do brasil"], portion: 20, kcal: 643, p: 14.5, c: 15.1, f: 63.5, src: "TACO", ref: "589" },
+    { id: "pasta-amendoim", name: "Pasta de amendoim", aliases: ["pasta de amendoim"], portion: 20, kcal: 598, p: 22.2, c: 22.3, f: 51.4, src: "USDA", ref: "174266" },
+    { id: "barra-cereal", name: "Barra de cereal", aliases: ["barra de cereal", "barra"], portion: 25, kcal: 471, p: 10.1, c: 64.4, f: 19.8, src: "USDA", ref: "167542" },
+    { id: "pipoca", name: "Pipoca", aliases: ["pipoca"], portion: 30, kcal: 448.3, p: 9.9, c: 70.3, f: 15.9, src: "TACO", ref: "61" },
+    { id: "salgadinho", name: "Salgadinho de milho", aliases: ["salgadinho", "chips", "salgadinho de milho"], portion: 30, kcal: 539, p: 6.2, c: 57.3, f: 33.4, src: "USDA", ref: "167537" },
+    { id: "acai", name: "Açaí (polpa)", aliases: ["acai", "açaí", "polpa de açaí"], portion: 200, kcal: 58, p: 0.8, c: 6.2, f: 3.9, src: "TACO", ref: "168" },
+    { id: "doce-leite", name: "Doce de leite", aliases: ["doce de leite", "doce de leite cremoso"], portion: 30, kcal: 306.3, p: 5.5, c: 59.5, f: 6, src: "TACO", ref: "501" },
+  ];
+
+  const NUMBER_WORDS = { um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, meio: 0.5, meia: 0.5 };
+  const FOOD_INDEX = FOODS.map((food) => ({
+    food,
+    aliases: Array.from(new Set([food.name, ...food.aliases])).map(normalize)
+  }));
+
+  function findFoodHits(text) {
+    const hits = [];
+    for (const entry of FOOD_INDEX) {
+      for (const alias of entry.aliases) {
+        let from = 0;
+        let index = text.indexOf(alias, from);
+        while (index !== -1) {
+          const before = index === 0 ? " " : text[index - 1];
+          const after = text[index + alias.length] || " ";
+          if (!/[a-z0-9]/.test(before) && !/[a-z0-9]/.test(after)) {
+            hits.push({ food: entry.food, index, end: index + alias.length });
+          }
+          from = index + 1;
+          index = text.indexOf(alias, from);
+        }
+      }
+    }
+    hits.sort((a, b) => a.index - b.index || (b.end - b.index) - (a.end - a.index));
+    const chosen = [];
+    for (const hit of hits) {
+      if (chosen.some((c) => hit.index < c.end && c.index < hit.end)) continue;
+      chosen.push(hit);
+    }
+    return chosen;
+  }
+
+  function quantityBefore(text, index, food) {
+    const window = text.slice(Math.max(0, index - 32), index);
+    const units = [
+      { re: /(\d+(?:[.,]\d+)?)\s*colheres?\s+de\s+sopa\s+(?:de\s+)?$/, grams: 15 },
+      { re: /(\d+(?:[.,]\d+)?)\s*colheres?\s+de\s+cha\s+(?:de\s+)?$/, grams: 5 },
+      { re: /(\d+(?:[.,]\d+)?)\s*(?:copos?)\s+(?:de\s+)?$/, grams: 250 },
+      { re: /(\d+(?:[.,]\d+)?)\s*(?:xicaras?)\s+(?:de\s+)?$/, grams: 200 },
+      { re: /(\d+(?:[.,]\d+)?)\s*(?:fatias?)\s+(?:de\s+)?$/, grams: 30 },
+      { re: /(\d+(?:[.,]\d+)?)\s*(?:gramas?|g)\s+(?:de\s+)?$/, grams: 1 },
+      { re: /(\d+(?:[.,]\d+)?)\s*(?:ml|mililitros?)\s+(?:de\s+)?$/, grams: 1 },
+      { re: /(\d+(?:[.,]\d+)?)\s*(?:litros?|l)\s+(?:de\s+)?$/, grams: 1000 }
+    ];
+    for (const unit of units) {
+      const match = window.match(unit.re);
+      if (match) {
+        const qty = parseNum(match[1]);
+        if (Number.isFinite(qty)) return qty * unit.grams;
+      }
+    }
+    const numeric = window.match(/(\d+(?:[.,]\d+)?)\s*(?:de\s+)?$/);
+    if (numeric) {
+      const qty = parseNum(numeric[1]);
+      if (Number.isFinite(qty)) return qty * food.portion;
+    }
+    const word = window.match(/(um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|meio|meia)\s+(?:de\s+)?$/);
+    if (word) return (NUMBER_WORDS[word[1]] || 1) * food.portion;
+    return food.portion;
+  }
+
+  function detectMealLabel(text) {
+    if (/cafe da manha|manha/.test(text)) return "Café da manhã";
+    if (/almoco/.test(text)) return "Almoço";
+    if (/jantar|janta/.test(text)) return "Jantar";
+    if (/lanche|merenda/.test(text)) return "Lanche";
+    const hour = new Date().getHours();
+    if (hour < 11) return "Café da manhã";
+    if (hour < 15) return "Almoço";
+    if (hour < 18) return "Lanche";
+    return "Jantar";
+  }
+
+  function parseMeal(text) {
+    const norm = normalize(text);
+    const hits = findFoodHits(norm);
+    if (!hits.length) return null;
+    const items = hits.map((hit) => {
+      const grams = quantityBefore(norm, hit.index, hit.food);
+      const factor = grams / 100;
+      return {
+        foodId: hit.food.id,
+        name: hit.food.name,
+        grams: round(grams),
+        kcal: +(hit.food.kcal * factor).toFixed(1),
+        p: +(hit.food.p * factor).toFixed(1),
+        c: +(hit.food.c * factor).toFixed(1),
+        f: +(hit.food.f * factor).toFixed(1)
+      };
+    });
+    return { items, label: detectMealLabel(norm) };
+  }
+
+  function parseWater(text) {
+    const norm = normalize(text);
+    if (!/agua|hidrat/.test(norm)) return null;
+    if (/agua de coco/.test(norm)) return null;
+    let ml = 0;
+    const liters = norm.match(/(\d+(?:[.,]\d+)?)\s*(?:litros?|l)\b/);
+    const millis = norm.match(/(\d+(?:[.,]\d+)?)\s*(?:ml|mililitros?)\b/);
+    if (liters) ml = parseNum(liters[1]) * 1000;
+    else if (millis) ml = parseNum(millis[1]);
+    else {
+      const glasses = norm.match(/(\d+(?:[.,]\d+)?|um|uma|dois|duas|meio|meia)\s*(?:copos?|garrafas?)\b/);
+      if (glasses) {
+        const qty = NUMBER_WORDS[glasses[1]] ?? parseNum(glasses[1]);
+        ml = qty * (/garrafa/.test(glasses[0]) ? 500 : 250);
+      }
+    }
+    if (!ml) ml = 250;
+    if (!(ml > 0 && ml <= 5000)) return null;
+    return { ml: round(ml / 10) * 10 };
+  }
+
+  function parseWeight(text) {
+    const norm = normalize(text);
+    const explicit = /(peso|pesando|balanca)/.test(norm);
+    if (!explicit && !/(kg|quilos?)\b/.test(norm)) return null;
+    const match = norm.match(/(?:peso|pesando|balanca)\D{0,14}(\d{2,3}(?:[.,]\d{1,2})?)/) ||
+      norm.match(/(\d{2,3}(?:[.,]\d{1,2})?)\s*(?:kg|quilos?)\b/);
+    if (!match) return null;
+    const kg = parseNum(match[1]);
+    if (!(kg >= 30 && kg <= 300)) return null;
+    return { kg };
+  }
+
+  const ACTIVITIES = [
+    { re: /corri|corrida|correr/, name: "Corrida", met: 9.8 },
+    { re: /caminhei|caminhada|caminhar|andei/, name: "Caminhada", met: 3.5 },
+    { re: /pedalei|bicicleta|ciclismo|bike/, name: "Bicicleta", met: 7.5 },
+    { re: /nadei|natacao|nadar/, name: "Natação", met: 8.0 },
+    { re: /musculacao|academia|treino de forca|pesos/, name: "Musculação", met: 6.0 },
+    { re: /yoga/, name: "Yoga", met: 3.0 },
+    { re: /pilates/, name: "Pilates", met: 3.0 },
+    { re: /futebol/, name: "Futebol", met: 7.0 },
+    { re: /dancei|danca/, name: "Dança", met: 5.0 }
+  ];
+
+  function parseActivity(text) {
+    const norm = normalize(text);
+    const activity = ACTIVITIES.find((item) => item.re.test(norm));
+    if (!activity) return null;
+    let minutes = 0;
+    const mins = norm.match(/(\d+(?:[.,]\d+)?)\s*(?:min|minutos?)\b/);
+    const hours = norm.match(/(\d+(?:[.,]\d+)?)\s*(?:h|horas?)\b/);
+    if (mins) minutes = parseNum(mins[1]);
+    else if (hours) minutes = parseNum(hours[1]) * 60;
+    else if (/meia hora/.test(norm)) minutes = 30;
+    if (!minutes) minutes = 30;
+    if (!(minutes > 0 && minutes <= 600)) return null;
+    const kg = latestWeight() || 70;
+    return {
+      name: activity.name,
+      minutes: round(minutes),
+      met: activity.met,
+      kcal: (activity.met * 3.5 * kg * minutes) / 200
+    };
+  }
+
+  function isQuestion(text) {
+    const raw = String(text || "").trim();
+    if (raw.endsWith("?")) return true;
+    return /^(o que|que |qual|quais|como|por que|porque|quando|quanto|quantos|quantas|posso|devo|sera|vale a pena|e bom|preciso|me explica|me ajuda)/.test(normalize(raw));
+  }
+
+  const RECORDING = /\b(comi|tomei|bebi|registra|registre|anota|anote|adiciona|adicione|peso|pesando|corri|caminhei|pedalei|nadei|treinei|fiz)\b/;
+
+  const WELCOME = "Oi! Eu sou a Viva. Posso anotar refeições, água, atividade e peso. Ex.: “comi 2 ovos e um pão”, “bebi 500 ml de água”, “corri 30 min” ou “peso 78,5”.";
+
+  async function askAI(question) {
+    if (!navigator.onLine) return "Você está offline. Tente de novo quando a conexão voltar.";
+    try {
+      const res = await apiFetch(`/functions/v1/${FN}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question })
+      });
+      if (res.status === 429) return "Muitas perguntas em pouco tempo. Espere um minuto e tente de novo.";
+      if (res.status === 503) return "A IA ainda não está configurada no servidor. Avise quem publicou o app.";
+      if (res.status === 401) {
+        sessionLost();
+        return "Sua sessão expirou. Entre de novo.";
+      }
+      if (!res.ok) return "Não consegui falar com a IA agora. Tente de novo em instantes.";
+      const data = await res.json().catch(() => null);
+      return (data && data.answer) || "A IA não retornou uma resposta.";
+    } catch {
+      return "Não consegui falar com a IA agora. Verifique a conexão.";
+    }
+  }
+
+  async function handleMessage(text) {
+    const norm = normalize(text);
+    const question = isQuestion(text);
+    if (question && !RECORDING.test(norm)) {
+      if (!state.profile.aiEnabled) return "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso anotar refeições, água, atividade e peso.";
+      return askAI(text);
+    }
+    const water = parseWater(text);
+    if (water) {
+      addWater(water.ml);
+      const d = dayData();
+      const target = state.targets?.waterMl || 2000;
+      return `Anotei ${nf(water.ml)} ml de água. Hoje: ${nf(d.waterMl)} ml de ${nf(target)} ml.`;
+    }
+    const weight = parseWeight(text);
+    if (weight) {
+      const before = latestWeight();
+      recordWeight(weight.kg);
+      const diff = before ? weight.kg - before : 0;
+      const trend = Math.abs(diff) < 0.05 ? "sem mudança" : diff < 0 ? `${nf1(Math.abs(diff))} kg a menos` : `${nf1(diff)} kg a mais`;
+      return `Peso registrado: ${nf1(weight.kg)} kg (${trend} desde o último registro).`;
+    }
+    const activity = parseActivity(text);
+    if (activity) {
+      const entry = addActivity(activity);
+      return `${entry.name} por ${entry.minutes} min: cerca de ${nf(entry.kcal)} kcal gastas. Bom movimento!`;
+    }
+    const meal = parseMeal(text);
+    if (meal) {
+      const saved = addMeal(meal.items, meal.label);
+      const list = saved.items.map((item) => `${item.name} (${nf(item.kcal)} kcal)`).join(", ");
+      const totals = dayTotals();
+      const left = (state.targets?.kcal || 0) - totals.kcal + totals.burned;
+      return `Anotei no ${meal.label.toLowerCase()}: ${list}. Total da refeição: ${nf(saved.kcal)} kcal. Restam ${nf(left)} kcal hoje.`;
+    }
+    if (question) {
+      if (!state.profile.aiEnabled) return "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso anotar refeições, água, atividade e peso.";
+      return askAI(text);
+    }
+    return "Ainda não entendi. Tente “comi 2 ovos e um pão”, “bebi 500 ml de água”, “corri 30 min” ou “peso 78,5”.";
+  }
+
+  function pushChat(role, text) {
+    if (!state) return;
+    state.chat.push({ role, text, at: nowIso() });
+    if (state.chat.length > CHAT_MAX) state.chat = state.chat.slice(-CHAT_MAX);
+    queueSave();
+  }
+
+  function messageNode(message) {
+    return h(
+      "div",
+      { class: `msg ${message.role === "me" ? "me" : "viva"}` },
+      message.text,
+      h("time", { datetime: message.at || "" }, fmtTime(message.at || nowIso()))
+    );
+  }
+
+  function appendThinking() {
+    const node = h("div", { class: "msg viva thinking", "aria-label": "Viva está pensando" }, h("i"), h("i"), h("i"));
+    $("#chat-log").append(node);
+    $("#chat-log").scrollTop = $("#chat-log").scrollHeight;
+    return node;
+  }
+
+  function renderChat() {
+    if (!state) return;
+    const log = $("#chat-log");
+    log.innerHTML = "";
+    const messages = state.chat.length ? state.chat : [{ role: "viva", text: WELCOME, at: nowIso() }];
+    for (const message of messages) log.append(messageNode(message));
+    log.scrollTop = log.scrollHeight;
+    const ai = !!state.profile.aiEnabled;
+    $("#ai-status").textContent = ai ? "IA ligada — perguntas abertas" : "IA desligada — anotações funcionam";
+    $("#ai-dot").dataset.on = String(ai);
+    $("#chat-note").textContent = ai
+      ? "Só o texto da sua pergunta vai para a OpenAI. Seus registros ficam no Supabase."
+      : "Seus registros de refeição, água, atividade e peso não são enviados à OpenAI.";
+  }
+
+  async function sendChat(text) {
+    const value = String(text || "").trim();
+    if (!value || chatBusy || !state) return;
+    chatBusy = true;
+    const input = $("#chat-input");
+    input.value = "";
+    input.style.height = "auto";
+    pushChat("me", value);
+    renderChat();
+    const thinking = appendThinking();
+    let reply;
+    try {
+      reply = await handleMessage(value);
+    } catch {
+      reply = "Algo deu errado por aqui. Tente de novo.";
+    }
+    thinking.remove();
+    pushChat("viva", reply);
+    renderChat();
+    chatBusy = false;
+    input.focus();
+  }
+
+  function setAvatar() {
+    const initial = (state?.profile?.name || user?.name || user?.email || "V").trim().charAt(0).toUpperCase() || "V";
+    for (const el of $$("[data-avatar]")) {
+      el.textContent = "";
+      if (user?.avatar && /^https:\/\//.test(user.avatar)) {
+        el.append(h("img", { src: user.avatar, alt: "" }));
+      } else {
+        el.textContent = initial;
+      }
+    }
+    const name = state?.profile?.name || user?.name || "Você";
+    for (const el of $$("[data-user-name]")) el.textContent = name;
+    for (const el of $$("[data-user-email]")) el.textContent = user?.email || "—";
+  }
+
+  function emptyBlock(title, text) {
+    return h("div", { class: "empty" }, h("strong", {}, title), text);
+  }
+
+  const ICONS = {
+    sun: [["circle", { cx: 12, cy: 12, r: 4 }], ["path", { d: "M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" }]],
+    bowl: [["path", { d: "M4 11h16a8 8 0 0 1-16 0Z" }], ["path", { d: "M8 7c0-1 1-1.5 1-2.5M12 7c0-1 1-1.5 1-2.5M16 7c0-1 1-1.5 1-2.5" }]],
+    apple: [["path", { d: "M12 7c-3-2-6 0-6 4 0 4 3 8 6 8s6-4 6-8c0-4-3-6-6-4Z" }], ["path", { d: "M12 7V4M12 4c1.5 0 3-1 3-2" }]],
+    moon: [["path", { d: "M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z" }]],
+    run: [["circle", { cx: 15, cy: 5, r: 2 }], ["path", { d: "M9 21l2-6-3-3 3-4 4 2 3 3M8 12l-3 2M14 15l3 6" }]],
+    scale: [["rect", { x: 3.5, y: 5, width: 17, height: 15, rx: 3 }], ["path", { d: "M8 5V4h8v1M12 10l2.5-2" }]],
+    drop: [["path", { d: "M12 3s6 6.3 6 10.5a6 6 0 0 1-12 0C6 9.3 12 3 12 3Z" }]]
+  };
+
+  function icon(name) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.8");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    for (const [tag, attrs] of ICONS[name] || []) {
+      const element = document.createElementNS(ns, tag);
+      for (const [key, value] of Object.entries(attrs)) element.setAttribute(key, value);
+      svg.append(element);
+    }
+    return svg;
+  }
+
+  const MEAL_ICON = { "Café da manhã": "sun", "Almoço": "bowl", "Lanche": "apple", "Jantar": "moon" };
+
+  function renderSpark(svg, values) {
+    if (!svg) return;
+    svg.innerHTML = "";
+    if (!values || values.length < 2) return;
+    const width = 300;
+    const height = 56;
+    const pad = 4;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const points = values.map((value, i) => [
+      pad + (i * (width - pad * 2)) / (values.length - 1),
+      max === min ? height / 2 : height - pad - ((value - min) / span) * (height - pad * 2)
+    ]);
+    const line = points.map((point, i) => `${i ? "L" : "M"}${point[0].toFixed(1)} ${point[1].toFixed(1)}`).join(" ");
+    const area = `${line} L${points[points.length - 1][0].toFixed(1)} ${height - pad} L${points[0][0].toFixed(1)} ${height - pad} Z`;
+    const ns = "http://www.w3.org/2000/svg";
+    const areaPath = document.createElementNS(ns, "path");
+    areaPath.setAttribute("d", area);
+    areaPath.setAttribute("class", "area");
+    const linePath = document.createElementNS(ns, "path");
+    linePath.setAttribute("d", line);
+    linePath.setAttribute("class", "line");
+    svg.append(areaPath, linePath);
+  }
+
+  function renderTopbar() {
+    const date = new Date();
+    const weekday = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+    $("#today-label").textContent = `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${fmtDay(date)}`;
+    $("#greet-date").textContent = fmtLong(date);
+    const hour = date.getHours();
+    const salute = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+    const name = state?.profile?.name ? `, ${state.profile.name.split(" ")[0]}` : "";
+    $("#greet-title").textContent = `${salute}${name}.`;
+    setAvatar();
+  }
+
+  function renderToday() {
+    if (!state) return;
+    const totals = dayTotals();
+    const target = state.targets || calcTargets(state.profile);
+    const consumed = round(totals.kcal);
+    const burned = round(totals.burned);
+    const budget = target.kcal + burned;
+    const remaining = target.kcal - consumed + burned;
+    const pct = clamp((consumed / Math.max(1, budget)) * 100, 0, 100);
+
+    const ring = $("#kcal-ring");
+    ring.style.setProperty("--p", pct.toFixed(1));
+    ring.setAttribute("aria-label", `${nf(consumed)} de ${nf(budget)} kcal consumidas`);
+    $("#kcal-remaining").textContent = nf(Math.abs(remaining));
+    const ringLabel = $("#kcal-ring .ring-inner span");
+    if (ringLabel) ringLabel.textContent = remaining >= 0 ? "kcal restantes" : "kcal acima da meta";
+    $("#kcal-of").textContent = `de ${nf(budget)} kcal`;
+    $("#kcal-summary").textContent = consumed || burned
+      ? `${nf(consumed)} kcal consumidas · ${nf(burned)} kcal em movimento`
+      : "Nenhuma refeição anotada ainda.";
+
+    const macros = [
+      ["protein", totals.protein, target.protein, "g"],
+      ["carbs", totals.carbs, target.carbs, "g"],
+      ["fat", totals.fat, target.fat, "g"]
+    ];
+    for (const [key, value, goal, unit] of macros) {
+      const percent = clamp((value / Math.max(1, goal)) * 100, 0, 100);
+      const bar = $(`#macro-${key}-bar`);
+      if (bar) bar.style.width = `${percent.toFixed(1)}%`;
+      const label = $(`#macro-${key}`);
+      if (label) label.textContent = `${round(value)} / ${round(goal)} ${unit}`;
+    }
+
+    const meals = dayData().meals;
+    const mealList = $("#meal-list");
+    mealList.innerHTML = "";
+    if (!meals.length) {
+      mealList.append(emptyBlock("Nada anotado ainda.", "Diga à Viva: “comi 2 ovos e um pão”."));
+    } else {
+      for (const meal of [...meals].reverse()) {
+        mealList.append(h(
+          "div",
+          { class: "row", dataset: { mealId: meal.id } },
+          h("span", { class: "r-ico", "aria-hidden": "true" }, icon(MEAL_ICON[meal.label] || "bowl")),
+          h("div", { class: "r-main" },
+            h("strong", {}, meal.items.map((item) => item.name).join(" + ")),
+            h("small", {}, `${meal.label} · ${fmtTime(meal.at)} · ${meal.items.map((item) => `${nf(item.grams)} g`).join(", ")}`)
+          ),
+          h("span", { class: "r-kcal" }, `${nf(meal.kcal)} kcal`),
+          h("button", { class: "r-del", type: "button", "data-del-meal": meal.id, "aria-label": `Remover ${meal.label}` }, "✕")
+        ));
+      }
+    }
+
+    const water = Number(dayData().waterMl) || 0;
+    const waterTarget = target.waterMl || 2000;
+    const waterPct = clamp((water / waterTarget) * 100, 0, 100);
+    $("#water-total").textContent = nf(water);
+    $("#water-target").textContent = nf(waterTarget);
+    $("#water-pct").textContent = `${round(waterPct)}%`;
+    $("#water-fill").style.width = `${waterPct.toFixed(1)}%`;
+    $("#water-track").setAttribute("aria-valuenow", String(round(waterPct)));
+
+    const weights = state.weights || [];
+    const latest = latestWeight();
+    $("#weight-latest").textContent = latest ? nf1(latest) : "—";
+    const delta = $("#weight-delta");
+    if (weights.length >= 2) {
+      const diff = Number(weights[weights.length - 1].kg) - Number(weights[weights.length - 2].kg);
+      delta.textContent = `${diff > 0 ? "+" : ""}${nf1(diff)} kg`;
+      delta.dataset.dir = diff < 0 ? "down" : diff > 0 ? "up" : "flat";
+    } else {
+      delta.textContent = "primeiro registro";
+      delta.dataset.dir = "flat";
+    }
+    renderSpark($("#weight-spark"), weights.slice(-14).map((w) => Number(w.kg)));
+    $("#weight-note").textContent = weights.length
+      ? `Último registro em ${fmtDay(parseYmd(weights[weights.length - 1].date))}.`
+      : "Registre seu peso pelo assistente: “peso 78,5”.";
+
+    const activities = dayData().activities;
+    const activityList = $("#activity-list");
+    activityList.innerHTML = "";
+    if (!activities.length) {
+      activityList.append(emptyBlock("Sem atividade hoje.", "Diga: “corri 30 min” ou “caminhei 20 min”."));
+    } else {
+      for (const activity of [...activities].reverse()) {
+        activityList.append(h(
+          "li",
+          { class: "row" },
+          h("span", { class: "r-ico", "aria-hidden": "true" }, icon("run")),
+          h("div", { class: "r-main" },
+            h("strong", {}, activity.name),
+            h("small", {}, `${activity.minutes} min · MET ${nf1(activity.met)}`)
+          ),
+          h("span", { class: "r-kcal" }, `${nf(activity.kcal)} kcal`),
+          h("button", { class: "r-del", type: "button", "data-del-activity": activity.id, "aria-label": `Remover ${activity.name}` }, "✕")
+        ));
+      }
+    }
+    $("#activity-total").textContent = `${nf(burned)} kcal`;
+  }
+
+  function renderDiary() {
+    if (!state) return;
+    const target = state.targets || calcTargets(state.profile);
+    const days = [];
+    for (let i = 0; i < 14; i += 1) {
+      const date = addDays(new Date(), -i);
+      const key = ymd(date);
+      days.push({ key, date, data: state.days[key] });
+    }
+    const withMeals = days.filter((item) => item.data && item.data.meals.length);
+    const withWater = days.filter((item) => item.data && item.data.waterMl > 0);
+    const recorded = days.filter((item) => item.data && (item.data.meals.length || item.data.waterMl > 0 || item.data.activities.length));
+    const avgKcal = withMeals.length ? round(withMeals.reduce((acc, item) => acc + dayTotals(item.key).kcal, 0) / withMeals.length) : 0;
+    const avgWater = withWater.length ? round(withWater.reduce((acc, item) => acc + Number(item.data.waterMl), 0) / withWater.length) : 0;
+    $("#diary-avg").textContent = avgKcal ? nf(avgKcal) : "—";
+    $("#diary-days").textContent = String(recorded.length);
+    $("#diary-water").textContent = avgWater ? `${nf1(avgWater / 1000)} L` : "—";
+
+    const list = $("#diary-days-list");
+    list.innerHTML = "";
+    for (const item of days) {
+      const totals = item.data ? dayTotals(item.key) : { kcal: 0, burned: 0 };
+      const pct = clamp((totals.kcal / Math.max(1, target.kcal)) * 100, 0, 100);
+      const weekdayRaw = item.date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+      const weekday = weekdayRaw.charAt(0).toUpperCase() + weekdayRaw.slice(1);
+      const hasData = !!(item.data && (item.data.meals.length || item.data.waterMl > 0 || item.data.activities.length));
+      list.append(h(
+        "div",
+        { class: "day" },
+        h("span", { class: "d-date" }, item.date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), h("small", {}, weekday)),
+        h("div", { class: "d-bar", role: "img", "aria-label": `${nf(totals.kcal)} de ${nf(target.kcal)} kcal` }, h("i", { style: `width:${pct.toFixed(1)}%` })),
+        h("span", { class: "d-kcal" }, totals.kcal ? `${nf(totals.kcal)} kcal` : "—"),
+        h("div", { class: "d-meta" },
+          hasData
+            ? [
+                h("span", {}, icon("drop"), `${nf(item.data.waterMl)} ml`),
+                h("span", {}, icon("run"), `${nf(totals.burned)} kcal`)
+              ]
+            : h("span", {}, "sem registros")
+        )
+      ));
+    }
+
+    const weights = state.weights || [];
+    $("#diary-weight-count").textContent = weights.length ? `${weights.length} registro${weights.length > 1 ? "s" : ""}` : "sem registros";
+    renderSpark($("#diary-weight-spark"), weights.slice(-14).map((w) => Number(w.kg)));
+    const weightList = $("#diary-weight-list");
+    weightList.innerHTML = "";
+    if (!weights.length) {
+      weightList.append(emptyBlock("Nenhum peso registrado.", "Diga “peso 78,5” para começar."));
+    } else {
+      const recent = weights.slice(-8);
+      for (let i = recent.length - 1; i >= 0; i -= 1) {
+        const item = recent[i];
+        const previous = recent[i - 1];
+        const delta = previous ? Number(item.kg) - Number(previous.kg) : null;
+        weightList.append(h(
+          "div",
+          { class: "row" },
+          h("span", { class: "r-ico", "aria-hidden": "true" }, icon("scale")),
+          h("div", { class: "r-main" }, h("strong", {}, `${nf1(item.kg)} kg`), h("small", {}, fmtDay(parseYmd(item.date)))),
+          h("span", { class: "r-kcal" }, delta == null ? "início" : `${delta > 0 ? "+" : ""}${nf1(delta)} kg`)
+        ));
+      }
+    }
+  }
+
+  function renderProfile() {
+    if (!state) return;
+    const target = state.targets || calcTargets(state.profile);
+    const form = $("#profile-form");
+    if (form && !form.contains(document.activeElement)) {
+      const decimal = (value) => (value == null || value === "" ? "" : String(value).replace(".", ","));
+      $("#pf-name").value = state.profile.name || "";
+      $("#pf-age").value = state.profile.age ?? "";
+      $("#pf-height").value = decimal(state.profile.heightCm);
+      $("#pf-weight").value = decimal(state.profile.weightKg);
+      $("#pf-goal").value = state.profile.goal || "maintain";
+    }
+    $("#pf-ai").checked = !!state.profile.aiEnabled;
+    $("#targets-summary").textContent = `${nf(target.kcal)} kcal · ${target.protein} g proteína`;
+    const last = state.weights.length ? state.weights[state.weights.length - 1] : null;
+    const lastText = last ? `último peso ${nf1(last.kg)} kg em ${fmtDay(parseYmd(last.date))}` : "sem registro de peso";
+    $("#profile-targets-note").textContent = `IMC ${nf1(bmi(state.profile.weightKg, state.profile.heightCm))} · água ${nf1(target.waterMl / 1000)} L · ${lastText}. Salve para recalcular as metas.`;
+    setAvatar();
+  }
+
+  function renderAll() {
+    if (!state) return;
+    renderTopbar();
+    renderToday();
+    renderDiary();
+    renderProfile();
+    renderChat();
+  }
+
+  function exportData() {
+    const payload = {
+      app: "Viva",
+      version: VERSION,
+      exportedAt: nowIso(),
+      account: { email: user?.email || "" },
+      data: state
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = h("a", { href: url, download: `viva-dados-${ymd()}.json` });
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast("Exportação pronta.");
+  }
+
+  function disarmDelete() {
+    deleteArmed = 0;
+    const button = $("#btn-delete");
+    if (!button) return;
+    button.dataset.armed = "false";
+    button.textContent = "Apagar todos os dados";
+    $("#delete-hint").textContent = "";
+  }
+
+  function armDelete() {
+    const button = $("#btn-delete");
+    if (Date.now() > deleteArmed) {
+      deleteArmed = Date.now() + 5000;
+      button.dataset.armed = "true";
+      button.textContent = "Toque de novo para apagar tudo";
+      $("#delete-hint").textContent = "Você tem 5 segundos para confirmar. Isso apaga o diário desta conta.";
+      setTimeout(() => { if (deleteArmed && Date.now() >= deleteArmed) disarmDelete(); }, 5100);
+      return;
+    }
+    disarmDelete();
+    wipeAll();
+  }
+
+  async function wipeAll() {
+    const button = $("#btn-delete");
+    button.disabled = true;
+    button.textContent = "Apagando…";
+    try {
+      const res = await apiFetch(`/rest/v1/viva_data?user_id=eq.${user.id}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 404) throw new ApiError("delete", res.status);
+      state = emptyState();
+      const form = $("#profile-form");
+      if (form) form.reset();
+      prepareOnboarding();
+      show("screen-onboarding");
+      toast("Dados apagados.");
+    } catch {
+      toast("Não consegui apagar agora. Tente de novo.");
+    } finally {
+      button.disabled = false;
+      disarmDelete();
+    }
+  }
+
+  function removeMeal(id) {
+    const d = dayData();
+    const index = d.meals.findIndex((meal) => meal.id === id);
+    if (index < 0) return;
+    d.meals.splice(index, 1);
+    queueSave();
+    renderToday();
+    renderDiary();
+    toast("Refeição removida.");
+  }
+
+  function removeActivity(id) {
+    const d = dayData();
+    const index = d.activities.findIndex((activity) => activity.id === id);
+    if (index < 0) return;
+    d.activities.splice(index, 1);
+    queueSave();
+    renderToday();
+    toast("Atividade removida.");
+  }
+
+  function toggleAI() {
+    state.profile.aiEnabled = $("#pf-ai").checked;
+    queueSave();
+    renderChat();
+    toast(state.profile.aiEnabled ? "IA ligada. Só a pergunta vai para a OpenAI." : "IA desligada.");
+  }
+
+  function updateOnline() {
+    const offline = !navigator.onLine;
+    const bar = $("#offline-bar");
+    if (bar) bar.hidden = !offline;
+    if (offline) {
+      setSync("offline");
+      return;
+    }
+    if (dirty) saveNow();
+  }
+
+  function autoGrow() {
+    const input = $("#chat-input");
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+  }
+
+  function bind() {
+    $("#btn-google").addEventListener("click", startLogin);
+    $("#onb-form").addEventListener("submit", submitOnboarding);
+    for (const id of ["onb-age", "onb-height", "onb-weight"]) $("#" + id).addEventListener("input", updateOnboardingPreview);
+    for (const radio of $$("input[name=goal]")) radio.addEventListener("change", updateOnboardingPreview);
+    $("#profile-form").addEventListener("submit", submitProfile);
+    $("#pf-ai").addEventListener("change", toggleAI);
+    $("#btn-water-250").addEventListener("click", () => addWater(250));
+    $("#btn-water-500").addEventListener("click", () => addWater(500));
+    $("#btn-water-undo").addEventListener("click", undoWater);
+    $("#btn-export").addEventListener("click", exportData);
+    $("#btn-delete").addEventListener("click", armDelete);
+    $("#btn-logout").addEventListener("click", logout);
+    $("#btn-install").addEventListener("click", async () => {
+      if (!installPrompt) return;
+      installPrompt.prompt();
+      await installPrompt.userChoice;
+      installPrompt = null;
+      $("#btn-install").hidden = true;
+    });
+    for (const button of $$("[data-view]")) button.addEventListener("click", () => setView(button.dataset.view));
+    for (const button of $$("[data-quick]")) {
+      button.addEventListener("click", () => {
+        const action = button.dataset.quick;
+        if (action === "water") {
+          addWater(250);
+          toast("+250 ml de água.");
+        } else if (action === "diary") {
+          setView("diario");
+        } else {
+          setView("viva");
+          const input = $("#chat-input");
+          if (action === "weight") input.value = "peso ";
+          input.focus();
+          autoGrow();
+        }
+      });
+    }
+    for (const button of $$("[data-focus-chat]")) {
+      button.addEventListener("click", () => {
+        setView("viva");
+        $("#chat-input").focus();
+      });
+    }
+    $("#chat-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      sendChat($("#chat-input").value);
+    });
+    $("#chat-input").addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        sendChat($("#chat-input").value);
+      }
+    });
+    $("#chat-input").addEventListener("input", autoGrow);
+    for (const suggestion of $$("[data-sug]")) suggestion.addEventListener("click", () => sendChat(suggestion.dataset.sug));
+    $("#meal-list").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-del-meal]");
+      if (button) removeMeal(button.dataset.delMeal);
+    });
+    $("#activity-list").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-del-activity]");
+      if (button) removeActivity(button.dataset.delActivity);
+    });
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOnline);
+    window.addEventListener("beforeinstallprompt", (event) => {
+      event.preventDefault();
+      installPrompt = event;
+      $("#btn-install").hidden = false;
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && loadSession()) ensureSession();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && deleteArmed) disarmDelete();
+    });
+    setInterval(() => {
+      if (loadSession()) ensureSession();
+    }, 5 * 60 * 1000);
+  }
+
+  async function boot() {
+    bind();
+    if ("serviceWorker" in navigator && !/[?&]sw=0/.test(location.search) && location.protocol !== "file:") {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    }
+    updateOnline();
+
+    if (!SB || !KEY || /SEU-PROJETO|SUA-CHAVE/.test(SB + KEY)) {
+      show("screen-config");
+      return;
+    }
+
+    const hash = location.hash.replace("#", "");
+    currentView = ["hoje", "diario", "viva", "perfil"].includes(hash)
+      ? hash
+      : localStorage.getItem(LS_VIEW) || "hoje";
+
+    try {
+      if (await handleCallback()) return;
+      const session = await ensureSession();
+      if (!session) {
+        show("screen-login");
+        return;
+      }
+      storeSession(session);
+      user = session.user;
+      show("boot");
+      await enterApp();
+      if (/[?&]acao=refeicao/.test(location.search)) {
+        setView("viva");
+        setTimeout(() => $("#chat-input").focus(), 60);
+      }
+    } catch (error) {
+      console.error(error);
+      show("screen-login");
+      toast(error && error.status === 401 ? "Sessão expirada. Entre de novo." : "Não consegui carregar seus dados. Tente de novo.");
+    }
+  }
+
+  boot();
+})();

@@ -1,0 +1,18 @@
+{
+  "name": "viva",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Viva: assistente pessoal de saude com Supabase",
+  "scripts": {
+    "test": "node tests/rls.test.mjs && node tests/foods.test.mjs && node tests/e2e.test.mjs",
+    "test:rls": "node tests/rls.test.mjs",
+    "test:foods": "node tests/foods.test.mjs",
+    "test:e2e": "node tests/e2e.test.mjs",
+    "build": "node build.cjs",
+    "serve": "node tests/support/server.cjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
+    "puppeteer-core": "^24.37.2"
+  }
+}

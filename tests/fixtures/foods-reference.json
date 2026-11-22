@@ -1,0 +1,1317 @@
+[
+ {
+  "id": "arroz-branco",
+  "name": "Arroz branco cozido",
+  "aliases": [
+   "arroz",
+   "arroz branco"
+  ],
+  "portion": 100,
+  "kcal": 128.3,
+  "p": 2.5,
+  "c": 28.1,
+  "f": 0.2,
+  "src": "TACO",
+  "ref": "3",
+  "sourceDesc": "Arroz, tipo 1, cozido"
+ },
+ {
+  "id": "arroz-integral",
+  "name": "Arroz integral cozido",
+  "aliases": [
+   "arroz integral"
+  ],
+  "portion": 100,
+  "kcal": 123.5,
+  "p": 2.6,
+  "c": 25.8,
+  "f": 1.0,
+  "src": "TACO",
+  "ref": "1",
+  "sourceDesc": "Arroz, integral, cozido"
+ },
+ {
+  "id": "feijao-carioca",
+  "name": "Feijão carioca cozido",
+  "aliases": [
+   "feijao",
+   "feijão"
+  ],
+  "portion": 100,
+  "kcal": 76.4,
+  "p": 4.8,
+  "c": 13.6,
+  "f": 0.5,
+  "src": "TACO",
+  "ref": "561",
+  "sourceDesc": "Feijão, carioca, cozido"
+ },
+ {
+  "id": "feijao-preto",
+  "name": "Feijão preto cozido",
+  "aliases": [
+   "feijao preto"
+  ],
+  "portion": 100,
+  "kcal": 77.0,
+  "p": 4.5,
+  "c": 14.0,
+  "f": 0.5,
+  "src": "TACO",
+  "ref": "567",
+  "sourceDesc": "Feijão, preto, cozido"
+ },
+ {
+  "id": "macarrao",
+  "name": "Macarrão cozido",
+  "aliases": [
+   "macarrao",
+   "massa"
+  ],
+  "portion": 100,
+  "kcal": 158.0,
+  "p": 5.8,
+  "c": 30.9,
+  "f": 0.9,
+  "src": "USDA",
+  "ref": "169737",
+  "sourceDesc": "Pasta, cooked, enriched, without added salt"
+ },
+ {
+  "id": "pao-frances",
+  "name": "Pão francês",
+  "aliases": [
+   "pao",
+   "pão",
+   "pao frances"
+  ],
+  "portion": 50,
+  "kcal": 299.8,
+  "p": 8.0,
+  "c": 58.6,
+  "f": 3.1,
+  "src": "TACO",
+  "ref": "53",
+  "sourceDesc": "Pão, trigo, francês"
+ },
+ {
+  "id": "pao-integral",
+  "name": "Pão de forma integral",
+  "aliases": [
+   "pao integral",
+   "pao de forma",
+   "pao de forma integral"
+  ],
+  "portion": 25,
+  "kcal": 253.2,
+  "p": 9.4,
+  "c": 49.9,
+  "f": 3.7,
+  "src": "TACO",
+  "ref": "52",
+  "sourceDesc": "Pão, trigo, forma, integral"
+ },
+ {
+  "id": "tapioca",
+  "name": "Tapioca com manteiga",
+  "aliases": [
+   "tapioca",
+   "goma de tapioca",
+   "tapioca com manteiga"
+  ],
+  "portion": 60,
+  "kcal": 347.8,
+  "p": 0.1,
+  "c": 63.6,
+  "f": 10.9,
+  "src": "TACO",
+  "ref": "551",
+  "sourceDesc": "Tapioca, com manteiga"
+ },
+ {
+  "id": "cuscuz",
+  "name": "Cuscuz de milho cozido",
+  "aliases": [
+   "cuscuz"
+  ],
+  "portion": 100,
+  "kcal": 113.5,
+  "p": 2.2,
+  "c": 25.3,
+  "f": 0.7,
+  "src": "TACO",
+  "ref": "533",
+  "sourceDesc": "Cuscuz, de milho, cozido com sal"
+ },
+ {
+  "id": "aveia",
+  "name": "Aveia em flocos",
+  "aliases": [
+   "aveia"
+  ],
+  "portion": 30,
+  "kcal": 393.8,
+  "p": 13.9,
+  "c": 66.6,
+  "f": 8.5,
+  "src": "TACO",
+  "ref": "7",
+  "sourceDesc": "Aveia, flocos, crua"
+ },
+ {
+  "id": "granola",
+  "name": "Granola",
+  "aliases": [
+   "granola"
+  ],
+  "portion": 30,
+  "kcal": 489.0,
+  "p": 13.7,
+  "c": 53.9,
+  "f": 24.3,
+  "src": "USDA",
+  "ref": "171646",
+  "sourceDesc": "Cereals ready-to-eat, granola, homemade"
+ },
+ {
+  "id": "batata-doce",
+  "name": "Batata-doce cozida",
+  "aliases": [
+   "batata doce"
+  ],
+  "portion": 100,
+  "kcal": 76.8,
+  "p": 0.6,
+  "c": 18.4,
+  "f": 0.1,
+  "src": "TACO",
+  "ref": "88",
+  "sourceDesc": "Batata, doce, cozida"
+ },
+ {
+  "id": "batata",
+  "name": "Batata cozida",
+  "aliases": [
+   "batata",
+   "batata inglesa"
+  ],
+  "portion": 100,
+  "kcal": 51.6,
+  "p": 1.2,
+  "c": 11.9,
+  "f": 0.0,
+  "src": "TACO",
+  "ref": "91",
+  "sourceDesc": "Batata, inglesa, cozida"
+ },
+ {
+  "id": "mandioca",
+  "name": "Mandioca cozida",
+  "aliases": [
+   "mandioca",
+   "aipim"
+  ],
+  "portion": 100,
+  "kcal": 125.4,
+  "p": 0.6,
+  "c": 30.1,
+  "f": 0.3,
+  "src": "TACO",
+  "ref": "129",
+  "sourceDesc": "Mandioca, cozida"
+ },
+ {
+  "id": "pure",
+  "name": "Purê de batata",
+  "aliases": [
+   "pure",
+   "purê"
+  ],
+  "portion": 100,
+  "kcal": 113.0,
+  "p": 1.9,
+  "c": 16.8,
+  "f": 4.2,
+  "src": "USDA",
+  "ref": "168555",
+  "sourceDesc": "Potatoes, mashed, home-prepared, whole milk and butter added"
+ },
+ {
+  "id": "farofa",
+  "name": "Farofa de mandioca",
+  "aliases": [
+   "farofa",
+   "farofa de mandioca"
+  ],
+  "portion": 50,
+  "kcal": 405.7,
+  "p": 2.1,
+  "c": 80.3,
+  "f": 9.1,
+  "src": "TACO",
+  "ref": "131",
+  "sourceDesc": "Mandioca, farofa, temperada"
+ },
+ {
+  "id": "ovo-cozido",
+  "name": "Ovo cozido",
+  "aliases": [
+   "ovo",
+   "ovos",
+   "ovo cozido",
+   "ovo de galinha"
+  ],
+  "portion": 50,
+  "kcal": 145.7,
+  "p": 13.3,
+  "c": 0.6,
+  "f": 9.5,
+  "src": "TACO",
+  "ref": "488",
+  "sourceDesc": "Ovo, de galinha, inteiro, cozido/10minutos"
+ },
+ {
+  "id": "ovo-frito",
+  "name": "Ovo frito",
+  "aliases": [
+   "ovo frito"
+  ],
+  "portion": 50,
+  "kcal": 240.2,
+  "p": 15.6,
+  "c": 1.2,
+  "f": 18.6,
+  "src": "TACO",
+  "ref": "490",
+  "sourceDesc": "Ovo, de galinha, inteiro, frito"
+ },
+ {
+  "id": "frango-peito",
+  "name": "Frango grelhado",
+  "aliases": [
+   "frango",
+   "peito de frango",
+   "file de frango"
+  ],
+  "portion": 100,
+  "kcal": 159.2,
+  "p": 32.0,
+  "c": 0.0,
+  "f": 2.5,
+  "src": "TACO",
+  "ref": "410",
+  "sourceDesc": "Frango, peito, sem pele, grelhado"
+ },
+ {
+  "id": "frango-coxa",
+  "name": "Frango assado (sobrecoxa sem pele)",
+  "aliases": [
+   "coxa de frango",
+   "sobrecoxa",
+   "frango assado"
+  ],
+  "portion": 100,
+  "kcal": 232.9,
+  "p": 29.2,
+  "c": 0.0,
+  "f": 12.0,
+  "src": "TACO",
+  "ref": "413",
+  "sourceDesc": "Frango, sobrecoxa, sem pele, assada"
+ },
+ {
+  "id": "patinho",
+  "name": "Carne bovina grelhada",
+  "aliases": [
+   "carne",
+   "bife",
+   "patinho"
+  ],
+  "portion": 100,
+  "kcal": 219.3,
+  "p": 35.9,
+  "c": 0.0,
+  "f": 7.3,
+  "src": "TACO",
+  "ref": "377",
+  "sourceDesc": "Carne, bovina, patinho, sem gordura, grelhado"
+ },
+ {
+  "id": "acem",
+  "name": "Acém cozido",
+  "aliases": [
+   "acem",
+   "acém",
+   "carne cozida"
+  ],
+  "portion": 100,
+  "kcal": 212.4,
+  "p": 26.7,
+  "c": 0.0,
+  "f": 10.9,
+  "src": "TACO",
+  "ref": "326",
+  "sourceDesc": "Carne, bovina, acém, moído, cozido"
+ },
+ {
+  "id": "lombo",
+  "name": "Lombo suíno",
+  "aliases": [
+   "lombo",
+   "carne de porco",
+   "porco"
+  ],
+  "portion": 100,
+  "kcal": 210.2,
+  "p": 35.7,
+  "c": 0.0,
+  "f": 6.4,
+  "src": "TACO",
+  "ref": "432",
+  "sourceDesc": "Porco, lombo, assado"
+ },
+ {
+  "id": "tilapia",
+  "name": "Tilápia grelhada",
+  "aliases": [
+   "tilapia",
+   "peixe"
+  ],
+  "portion": 100,
+  "kcal": 128.0,
+  "p": 26.1,
+  "c": 0.0,
+  "f": 2.6,
+  "src": "USDA",
+  "ref": "175177",
+  "sourceDesc": "Fish, tilapia, cooked, dry heat"
+ },
+ {
+  "id": "salmao",
+  "name": "Salmão grelhado",
+  "aliases": [
+   "salmao"
+  ],
+  "portion": 100,
+  "kcal": 242.7,
+  "p": 26.1,
+  "c": 0.0,
+  "f": 14.5,
+  "src": "TACO",
+  "ref": "317",
+  "sourceDesc": "Salmão, sem pele, fresco, grelhado"
+ },
+ {
+  "id": "atum",
+  "name": "Atum em água",
+  "aliases": [
+   "atum"
+  ],
+  "portion": 100,
+  "kcal": 116.0,
+  "p": 25.5,
+  "c": 0.0,
+  "f": 0.8,
+  "src": "USDA",
+  "ref": "171986",
+  "sourceDesc": "Fish, tuna, light, canned in water, without salt, drained solids"
+ },
+ {
+  "id": "sardinha",
+  "name": "Sardinha em óleo",
+  "aliases": [
+   "sardinha",
+   "sardinha em óleo"
+  ],
+  "portion": 100,
+  "kcal": 285.0,
+  "p": 15.9,
+  "c": 0.0,
+  "f": 24.0,
+  "src": "TACO",
+  "ref": "319",
+  "sourceDesc": "Sardinha, conserva em óleo"
+ },
+ {
+  "id": "camarao",
+  "name": "Camarão cozido",
+  "aliases": [
+   "camarao"
+  ],
+  "portion": 100,
+  "kcal": 90.0,
+  "p": 19.0,
+  "c": 0.0,
+  "f": 1.0,
+  "src": "TACO",
+  "ref": "284",
+  "sourceDesc": "Camarão, Rio Grande, grande, cozido"
+ },
+ {
+  "id": "linguica",
+  "name": "Linguiça de porco grelhada",
+  "aliases": [
+   "linguica",
+   "linguiça",
+   "linguiça de porco"
+  ],
+  "portion": 50,
+  "kcal": 296.5,
+  "p": 23.2,
+  "c": 0.0,
+  "f": 21.9,
+  "src": "TACO",
+  "ref": "423",
+  "sourceDesc": "Lingüiça, porco, grelhada"
+ },
+ {
+  "id": "presunto",
+  "name": "Presunto",
+  "aliases": [
+   "presunto"
+  ],
+  "portion": 30,
+  "kcal": 93.7,
+  "p": 14.3,
+  "c": 2.1,
+  "f": 2.7,
+  "src": "TACO",
+  "ref": "439",
+  "sourceDesc": "Presunto, sem capa de gordura"
+ },
+ {
+  "id": "queijo-mucarela",
+  "name": "Queijo muçarela",
+  "aliases": [
+   "queijo",
+   "mucarela",
+   "mussarela",
+   "queijo mucarela"
+  ],
+  "portion": 30,
+  "kcal": 329.9,
+  "p": 22.6,
+  "c": 3.0,
+  "f": 25.2,
+  "src": "TACO",
+  "ref": "463",
+  "sourceDesc": "Queijo, mozarela"
+ },
+ {
+  "id": "queijo-minas",
+  "name": "Queijo minas",
+  "aliases": [
+   "queijo minas",
+   "queijo frescal"
+  ],
+  "portion": 30,
+  "kcal": 264.3,
+  "p": 17.4,
+  "c": 3.2,
+  "f": 20.2,
+  "src": "TACO",
+  "ref": "461",
+  "sourceDesc": "Queijo, minas, frescal"
+ },
+ {
+  "id": "requeijao",
+  "name": "Requeijão",
+  "aliases": [
+   "requeijao"
+  ],
+  "portion": 30,
+  "kcal": 256.6,
+  "p": 9.6,
+  "c": 2.4,
+  "f": 23.4,
+  "src": "TACO",
+  "ref": "468",
+  "sourceDesc": "Queijo, requeijão, cremoso"
+ },
+ {
+  "id": "iogurte",
+  "name": "Iogurte natural",
+  "aliases": [
+   "iogurte",
+   "iogurte natural"
+  ],
+  "portion": 170,
+  "kcal": 51.5,
+  "p": 4.1,
+  "c": 1.9,
+  "f": 3.0,
+  "src": "TACO",
+  "ref": "448",
+  "sourceDesc": "Iogurte, natural"
+ },
+ {
+  "id": "iogurte-grego",
+  "name": "Iogurte grego zero",
+  "aliases": [
+   "iogurte grego",
+   "iogurte grego zero"
+  ],
+  "portion": 170,
+  "kcal": 59.0,
+  "p": 10.2,
+  "c": 3.6,
+  "f": 0.4,
+  "src": "USDA",
+  "ref": "170894",
+  "sourceDesc": "Yogurt, Greek, plain, nonfat (Includes foods for USDA's Food Distribution Program)"
+ },
+ {
+  "id": "leite",
+  "name": "Leite integral",
+  "aliases": [
+   "leite",
+   "leite integral"
+  ],
+  "portion": 200,
+  "kcal": 61.0,
+  "p": 3.1,
+  "c": 4.8,
+  "f": 3.2,
+  "src": "USDA",
+  "ref": "171265",
+  "sourceDesc": "Milk, whole, 3.25% milkfat, with added vitamin D"
+ },
+ {
+  "id": "leite-desnatado",
+  "name": "Leite desnatado",
+  "aliases": [
+   "leite desnatado"
+  ],
+  "portion": 200,
+  "kcal": 34.0,
+  "p": 3.4,
+  "c": 5.0,
+  "f": 0.1,
+  "src": "USDA",
+  "ref": "171269",
+  "sourceDesc": "Milk, nonfat, fluid, with added vitamin A and vitamin D (fat free or skim)"
+ },
+ {
+  "id": "leite-aveia",
+  "name": "Leite de aveia",
+  "aliases": [
+   "leite de aveia"
+  ],
+  "portion": 200,
+  "kcal": 45.0,
+  "p": 0.7,
+  "c": 5.4,
+  "f": 2.3,
+  "src": "USDA",
+  "ref": "2705412",
+  "sourceDesc": "Oat milk"
+ },
+ {
+  "id": "whey",
+  "name": "Whey protein",
+  "aliases": [
+   "whey",
+   "whey protein"
+  ],
+  "portion": 30,
+  "kcal": 352.0,
+  "p": 78.1,
+  "c": 6.2,
+  "f": 1.6,
+  "src": "USDA",
+  "ref": "173180",
+  "sourceDesc": "Beverages, Protein powder whey based"
+ },
+ {
+  "id": "banana",
+  "name": "Banana",
+  "aliases": [
+   "banana",
+   "banana prata"
+  ],
+  "portion": 70,
+  "kcal": 98.2,
+  "p": 1.3,
+  "c": 26.0,
+  "f": 0.1,
+  "src": "TACO",
+  "ref": "182",
+  "sourceDesc": "Banana, prata, crua"
+ },
+ {
+  "id": "maca",
+  "name": "Maçã",
+  "aliases": [
+   "maca",
+   "maçã"
+  ],
+  "portion": 130,
+  "kcal": 55.5,
+  "p": 0.3,
+  "c": 15.2,
+  "f": 0.0,
+  "src": "TACO",
+  "ref": "222",
+  "sourceDesc": "Maçã, Fuji, com casca, crua"
+ },
+ {
+  "id": "laranja",
+  "name": "Laranja",
+  "aliases": [
+   "laranja"
+  ],
+  "portion": 130,
+  "kcal": 36.8,
+  "p": 1.0,
+  "c": 8.9,
+  "f": 0.1,
+  "src": "TACO",
+  "ref": "214",
+  "sourceDesc": "Laranja, pêra, crua"
+ },
+ {
+  "id": "mamao",
+  "name": "Mamão",
+  "aliases": [
+   "mamao"
+  ],
+  "portion": 150,
+  "kcal": 45.3,
+  "p": 0.8,
+  "c": 11.6,
+  "f": 0.1,
+  "src": "TACO",
+  "ref": "225",
+  "sourceDesc": "Mamão, Formosa, cru"
+ },
+ {
+  "id": "manga",
+  "name": "Manga",
+  "aliases": [
+   "manga"
+  ],
+  "portion": 130,
+  "kcal": 72.5,
+  "p": 0.4,
+  "c": 19.4,
+  "f": 0.2,
+  "src": "TACO",
+  "ref": "229",
+  "sourceDesc": "Manga, Palmer, crua"
+ },
+ {
+  "id": "melancia",
+  "name": "Melancia",
+  "aliases": [
+   "melancia"
+  ],
+  "portion": 200,
+  "kcal": 32.6,
+  "p": 0.9,
+  "c": 8.1,
+  "f": 0.0,
+  "src": "TACO",
+  "ref": "235",
+  "sourceDesc": "Melancia, crua"
+ },
+ {
+  "id": "uva",
+  "name": "Uva",
+  "aliases": [
+   "uva"
+  ],
+  "portion": 100,
+  "kcal": 52.9,
+  "p": 0.7,
+  "c": 13.6,
+  "f": 0.2,
+  "src": "TACO",
+  "ref": "256",
+  "sourceDesc": "Uva, Itália, crua"
+ },
+ {
+  "id": "morango",
+  "name": "Morango",
+  "aliases": [
+   "morango"
+  ],
+  "portion": 100,
+  "kcal": 30.1,
+  "p": 0.9,
+  "c": 6.8,
+  "f": 0.3,
+  "src": "TACO",
+  "ref": "239",
+  "sourceDesc": "Morango, cru"
+ },
+ {
+  "id": "abacaxi",
+  "name": "Abacaxi",
+  "aliases": [
+   "abacaxi"
+  ],
+  "portion": 100,
+  "kcal": 48.3,
+  "p": 0.9,
+  "c": 12.3,
+  "f": 0.1,
+  "src": "TACO",
+  "ref": "164",
+  "sourceDesc": "Abacaxi, cru"
+ },
+ {
+  "id": "abacate",
+  "name": "Abacate",
+  "aliases": [
+   "abacate"
+  ],
+  "portion": 100,
+  "kcal": 96.2,
+  "p": 1.2,
+  "c": 6.0,
+  "f": 8.4,
+  "src": "TACO",
+  "ref": "163",
+  "sourceDesc": "Abacate, cru"
+ },
+ {
+  "id": "pera",
+  "name": "Pera",
+  "aliases": [
+   "pera"
+  ],
+  "portion": 130,
+  "kcal": 57.0,
+  "p": 0.4,
+  "c": 15.2,
+  "f": 0.1,
+  "src": "USDA",
+  "ref": "169118",
+  "sourceDesc": "Pears, raw"
+ },
+ {
+  "id": "salada",
+  "name": "Alface crespa",
+  "aliases": [
+   "salada",
+   "salada de folhas",
+   "alface"
+  ],
+  "portion": 50,
+  "kcal": 10.7,
+  "p": 1.3,
+  "c": 1.7,
+  "f": 0.2,
+  "src": "TACO",
+  "ref": "78",
+  "sourceDesc": "Alface, crespa, crua"
+ },
+ {
+  "id": "tomate",
+  "name": "Tomate",
+  "aliases": [
+   "tomate"
+  ],
+  "portion": 100,
+  "kcal": 15.3,
+  "p": 1.1,
+  "c": 3.1,
+  "f": 0.2,
+  "src": "TACO",
+  "ref": "157",
+  "sourceDesc": "Tomate, com semente, cru"
+ },
+ {
+  "id": "cenoura",
+  "name": "Cenoura",
+  "aliases": [
+   "cenoura"
+  ],
+  "portion": 100,
+  "kcal": 34.1,
+  "p": 1.3,
+  "c": 7.7,
+  "f": 0.2,
+  "src": "TACO",
+  "ref": "110",
+  "sourceDesc": "Cenoura, crua"
+ },
+ {
+  "id": "brocolis",
+  "name": "Brócolis",
+  "aliases": [
+   "brocolis"
+  ],
+  "portion": 100,
+  "kcal": 24.6,
+  "p": 2.1,
+  "c": 4.4,
+  "f": 0.5,
+  "src": "TACO",
+  "ref": "100",
+  "sourceDesc": "Brócolis, cozido"
+ },
+ {
+  "id": "abobrinha",
+  "name": "Abobrinha",
+  "aliases": [
+   "abobrinha"
+  ],
+  "portion": 100,
+  "kcal": 15.0,
+  "p": 1.1,
+  "c": 3.0,
+  "f": 0.2,
+  "src": "TACO",
+  "ref": "70",
+  "sourceDesc": "Abobrinha, italiana, cozida"
+ },
+ {
+  "id": "cafe",
+  "name": "Café sem açúcar",
+  "aliases": [
+   "cafe",
+   "café",
+   "café sem açúcar"
+  ],
+  "portion": 50,
+  "kcal": 9.1,
+  "p": 0.7,
+  "c": 1.5,
+  "f": 0.1,
+  "src": "TACO",
+  "ref": "471",
+  "sourceDesc": "Café, infusão 10%"
+ },
+ {
+  "id": "suco-laranja",
+  "name": "Suco de laranja",
+  "aliases": [
+   "suco",
+   "suco de laranja"
+  ],
+  "portion": 200,
+  "kcal": 32.7,
+  "p": 0.7,
+  "c": 7.6,
+  "f": 0.1,
+  "src": "TACO",
+  "ref": "215",
+  "sourceDesc": "Laranja, pêra, suco"
+ },
+ {
+  "id": "refrigerante",
+  "name": "Refrigerante",
+  "aliases": [
+   "refrigerante",
+   "coca",
+   "coca-cola"
+  ],
+  "portion": 350,
+  "kcal": 33.5,
+  "p": 0.0,
+  "c": 8.7,
+  "f": 0.0,
+  "src": "TACO",
+  "ref": "480",
+  "sourceDesc": "Refrigerante, tipo cola"
+ },
+ {
+  "id": "agua-coco",
+  "name": "Água de coco",
+  "aliases": [
+   "agua de coco",
+   "água de coco"
+  ],
+  "portion": 200,
+  "kcal": 21.5,
+  "p": 0.0,
+  "c": 5.3,
+  "f": 0.0,
+  "src": "TACO",
+  "ref": "478",
+  "sourceDesc": "Coco, água de"
+ },
+ {
+  "id": "azeite",
+  "name": "Azeite de oliva",
+  "aliases": [
+   "azeite",
+   "azeite de oliva"
+  ],
+  "portion": 10,
+  "kcal": 884.0,
+  "p": 0.0,
+  "c": 0.0,
+  "f": 100.0,
+  "src": "TACO",
+  "ref": "260",
+  "sourceDesc": "Azeite, de oliva, extra virgem"
+ },
+ {
+  "id": "manteiga",
+  "name": "Manteiga",
+  "aliases": [
+   "manteiga"
+  ],
+  "portion": 10,
+  "kcal": 726.0,
+  "p": 0.4,
+  "c": 0.1,
+  "f": 82.4,
+  "src": "TACO",
+  "ref": "261",
+  "sourceDesc": "Manteiga, com sal"
+ },
+ {
+  "id": "margarina",
+  "name": "Margarina com sal",
+  "aliases": [
+   "margarina"
+  ],
+  "portion": 10,
+  "kcal": 596.1,
+  "p": 0.0,
+  "c": 0.0,
+  "f": 67.4,
+  "src": "TACO",
+  "ref": "263",
+  "sourceDesc": "Margarina, com óleo hidrogenado, com sal (65% de lipídeos)"
+ },
+ {
+  "id": "creme-leite",
+  "name": "Creme de leite",
+  "aliases": [
+   "creme de leite"
+  ],
+  "portion": 15,
+  "kcal": 221.5,
+  "p": 1.5,
+  "c": 4.5,
+  "f": 22.5,
+  "src": "TACO",
+  "ref": "447",
+  "sourceDesc": "Creme de Leite"
+ },
+ {
+  "id": "chocolate",
+  "name": "Chocolate ao leite",
+  "aliases": [
+   "chocolate"
+  ],
+  "portion": 25,
+  "kcal": 539.6,
+  "p": 7.2,
+  "c": 59.6,
+  "f": 30.3,
+  "src": "TACO",
+  "ref": "495",
+  "sourceDesc": "Chocolate, ao leite"
+ },
+ {
+  "id": "bolo",
+  "name": "Bolo de chocolate",
+  "aliases": [
+   "bolo"
+  ],
+  "portion": 60,
+  "kcal": 410.0,
+  "p": 6.2,
+  "c": 54.7,
+  "f": 18.5,
+  "src": "TACO",
+  "ref": "16",
+  "sourceDesc": "Bolo, pronto, chocolate"
+ },
+ {
+  "id": "sorvete",
+  "name": "Sorvete de baunilha",
+  "aliases": [
+   "sorvete",
+   "sorvete de baunilha"
+  ],
+  "portion": 60,
+  "kcal": 207.0,
+  "p": 3.5,
+  "c": 23.6,
+  "f": 11.0,
+  "src": "USDA",
+  "ref": "167575",
+  "sourceDesc": "Ice creams, vanilla"
+ },
+ {
+  "id": "biscoito",
+  "name": "Biscoito recheado",
+  "aliases": [
+   "biscoito",
+   "bolacha"
+  ],
+  "portion": 30,
+  "kcal": 471.8,
+  "p": 6.4,
+  "c": 70.5,
+  "f": 19.6,
+  "src": "TACO",
+  "ref": "9",
+  "sourceDesc": "Biscoito, doce, recheado com chocolate"
+ },
+ {
+  "id": "pao-queijo",
+  "name": "Pão de queijo",
+  "aliases": [
+   "pao de queijo"
+  ],
+  "portion": 40,
+  "kcal": 363.1,
+  "p": 5.1,
+  "c": 34.2,
+  "f": 24.6,
+  "src": "TACO",
+  "ref": "140",
+  "sourceDesc": "Pão, de queijo, assado"
+ },
+ {
+  "id": "coxinha",
+  "name": "Coxinha",
+  "aliases": [
+   "coxinha",
+   "salgado"
+  ],
+  "portion": 80,
+  "kcal": 283.0,
+  "p": 9.6,
+  "c": 34.5,
+  "f": 11.8,
+  "src": "TACO",
+  "ref": "386",
+  "sourceDesc": "Coxinha de frango, frita"
+ },
+ {
+  "id": "pizza",
+  "name": "Pizza de muçarela",
+  "aliases": [
+   "pizza",
+   "pizza de muçarela",
+   "pizza de mussarela"
+  ],
+  "portion": 100,
+  "kcal": 266.0,
+  "p": 11.4,
+  "c": 33.3,
+  "f": 9.7,
+  "src": "USDA",
+  "ref": "2708616",
+  "sourceDesc": "Pizza, cheese, from restaurant or fast food, medium crust"
+ },
+ {
+  "id": "hamburguer",
+  "name": "Hambúrguer bovino grelhado",
+  "aliases": [
+   "hamburguer",
+   "hambúrguer",
+   "hambúrguer bovino"
+  ],
+  "portion": 120,
+  "kcal": 209.8,
+  "p": 13.2,
+  "c": 11.3,
+  "f": 12.4,
+  "src": "TACO",
+  "ref": "417",
+  "sourceDesc": "Hambúrguer, bovino, grelhado"
+ },
+ {
+  "id": "sanduiche",
+  "name": "Sanduíche de frango grelhado",
+  "aliases": [
+   "sanduiche",
+   "sanduíche",
+   "sanduíche de frango"
+  ],
+  "portion": 150,
+  "kcal": 226.0,
+  "p": 21.5,
+  "c": 19.4,
+  "f": 6.2,
+  "src": "USDA",
+  "ref": "2707005",
+  "sourceDesc": "Chicken fillet sandwich, grilled, from fast food"
+ },
+ {
+  "id": "sopa",
+  "name": "Sopa de legumes",
+  "aliases": [
+   "sopa",
+   "sopa de legumes"
+  ],
+  "portion": 300,
+  "kcal": 27.0,
+  "p": 0.8,
+  "c": 5.1,
+  "f": 0.5,
+  "src": "USDA",
+  "ref": "2710113",
+  "sourceDesc": "Soup, vegetable"
+ },
+ {
+  "id": "sushi",
+  "name": "Sushi de salmão",
+  "aliases": [
+   "sushi",
+   "sushi de salmão"
+  ],
+  "portion": 30,
+  "kcal": 103.0,
+  "p": 6.9,
+  "c": 15.3,
+  "f": 1.3,
+  "src": "USDA",
+  "ref": "2708963",
+  "sourceDesc": "Sushi roll, salmon"
+ },
+ {
+  "id": "amendoim",
+  "name": "Amendoim torrado",
+  "aliases": [
+   "amendoim",
+   "amendoim torrado"
+  ],
+  "portion": 30,
+  "kcal": 605.8,
+  "p": 22.5,
+  "c": 18.7,
+  "f": 54.0,
+  "src": "TACO",
+  "ref": "558",
+  "sourceDesc": "Amendoim, torrado, salgado"
+ },
+ {
+  "id": "castanha-caju",
+  "name": "Castanha de caju",
+  "aliases": [
+   "castanha",
+   "castanha de caju"
+  ],
+  "portion": 30,
+  "kcal": 570.2,
+  "p": 18.5,
+  "c": 29.1,
+  "f": 46.3,
+  "src": "TACO",
+  "ref": "588",
+  "sourceDesc": "Castanha-de-caju, torrada, salgada"
+ },
+ {
+  "id": "castanha-para",
+  "name": "Castanha-do-pará",
+  "aliases": [
+   "castanha do para",
+   "castanha-do-pará",
+   "castanha do brasil"
+  ],
+  "portion": 20,
+  "kcal": 643.0,
+  "p": 14.5,
+  "c": 15.1,
+  "f": 63.5,
+  "src": "TACO",
+  "ref": "589",
+  "sourceDesc": "Castanha-do-Brasil, crua"
+ },
+ {
+  "id": "pasta-amendoim",
+  "name": "Pasta de amendoim",
+  "aliases": [
+   "pasta de amendoim"
+  ],
+  "portion": 20,
+  "kcal": 598.0,
+  "p": 22.2,
+  "c": 22.3,
+  "f": 51.4,
+  "src": "USDA",
+  "ref": "174266",
+  "sourceDesc": "Peanut butter, smooth style, with salt (Includes foods for USDA's Food Distribution Program)"
+ },
+ {
+  "id": "barra-cereal",
+  "name": "Barra de cereal",
+  "aliases": [
+   "barra de cereal",
+   "barra"
+  ],
+  "portion": 25,
+  "kcal": 471.0,
+  "p": 10.1,
+  "c": 64.4,
+  "f": 19.8,
+  "src": "USDA",
+  "ref": "167542",
+  "sourceDesc": "Snacks, granola bars, hard, plain"
+ },
+ {
+  "id": "pipoca",
+  "name": "Pipoca",
+  "aliases": [
+   "pipoca"
+  ],
+  "portion": 30,
+  "kcal": 448.3,
+  "p": 9.9,
+  "c": 70.3,
+  "f": 15.9,
+  "src": "TACO",
+  "ref": "61",
+  "sourceDesc": "Pipoca, com óleo de soja, sem sal"
+ },
+ {
+  "id": "salgadinho",
+  "name": "Salgadinho de milho",
+  "aliases": [
+   "salgadinho",
+   "chips",
+   "salgadinho de milho"
+  ],
+  "portion": 30,
+  "kcal": 539.0,
+  "p": 6.2,
+  "c": 57.3,
+  "f": 33.4,
+  "src": "USDA",
+  "ref": "167537",
+  "sourceDesc": "Snacks, corn-based, extruded, chips, plain"
+ },
+ {
+  "id": "acai",
+  "name": "Açaí (polpa)",
+  "aliases": [
+   "acai",
+   "açaí",
+   "polpa de açaí"
+  ],
+  "portion": 200,
+  "kcal": 58.0,
+  "p": 0.8,
+  "c": 6.2,
+  "f": 3.9,
+  "src": "TACO",
+  "ref": "168",
+  "sourceDesc": "Açaí, polpa, congelada"
+ },
+ {
+  "id": "doce-leite",
+  "name": "Doce de leite",
+  "aliases": [
+   "doce de leite",
+   "doce de leite cremoso"
+  ],
+  "portion": 30,
+  "kcal": 306.3,
+  "p": 5.5,
+  "c": 59.5,
+  "f": 6.0,
+  "src": "TACO",
+  "ref": "501",
+  "sourceDesc": "Doce, de leite, cremoso"
+ }
+]
