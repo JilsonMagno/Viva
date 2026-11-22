@@ -33,10 +33,10 @@ Seis abas, iguais às do app original e do protótipo:
 Os IDs internos antigos (`hoje`, `viva`, `diario`) foram mantidos para não quebrar links diretos; os rótulos visíveis são os seis acima.
 
 Testes:
-- `node tests/rls.test.mjs`: 11 verificações da migração e das regras de acesso, em Postgres real (PGlite), incluindo um usuário anônimo.
+- `node tests/rls.test.mjs`: 15 verificações da migração e das regras de acesso, em Postgres real (PGlite), incluindo um usuário anônimo.
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
 - `node tests/ai-proxy.test.mjs`: 9 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter e recusa de foto no Groq.
-- `node tests/food-api.test.mjs`: 9 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, plural, valores por 100 g e ausência de dados.
+- `node tests/food-api.test.mjs`: 10 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g e ausência de dados.
 - `node tests/e2e.test.mjs`: 29 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, padronização dos nomes, nomes fora da tabela, peso da porção, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as cinco suítes.
 
@@ -45,7 +45,7 @@ Testes:
 - `index.html`: 178.699 bytes crus, 46.572 bytes em gzip e 48.607 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.8.1`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.9.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -55,7 +55,7 @@ Criar contas e aceitar cobranças exige o seu login. Estes são os passos mínim
 2. **Supabase, login visitante**: em *Authentication > Providers*, ative **Anonymous sign-ins**. É o caminho sem OAuth e o de menor atrito para compartilhar o link.
 3. **Google (opcional)**: no Google Cloud, crie um *OAuth client* do tipo *Web application*. Em *Authorized redirect URIs*, use `https://SEU-PROJETO.supabase.co/auth/v1/callback`. Depois, em Supabase *Authentication > Providers > Google*, cole o Client ID e o Client Secret.
 4. **Supabase, URLs de retorno (só com Google)**: em *Authentication > URL Configuration*, adicione a URL do site em *Redirect URLs*.
-5. **Backend**: aplique a migração de `supabase/migrations/` no SQL Editor ou pela Supabase CLI para criar `viva_data` com RLS. A Edge Function `assistente` é legada; a IA de produção usa `/api/ai` no Vercel.
+5. **Backend**: aplique as migrações de `supabase/migrations/` no SQL Editor ou pela Supabase CLI para criar `viva_data` e `viva_foods` com RLS. A Edge Function `assistente` é legada; a IA de produção usa `/api/ai` no Vercel.
 6. **Site**: preencha `config.js` com a URL e a chave do passo 1. O projeto Vercel já está conectado ao repositório; `npx vercel --prod` publica a pasta `public`. Se trocar de projeto Supabase, defina também `SUPABASE_URL` e `SUPABASE_ANON_KEY` nas variáveis do Vercel; `api/ai.mjs` valida o JWT com elas.
 7. **IA (opcional, uma vez, pelo dono)**: em *Vercel > Project > Settings > Environment Variables*, crie `AI_API_KEY` com uma chave de OpenAI, Groq, Gemini ou OpenRouter. Para começar sem custo, use uma chave gratuita de OpenRouter, Gemini ou Groq (veja a seção **IA gratuita**). Opcionalmente defina `AI_PROVIDER`, `AI_MODEL` e `AI_VISION_MODEL`. Depois faça um novo deploy. O usuário pode usar essa IA só com login ou salvar a própria chave em Perfil. Sem `AI_API_KEY`, o cartão continua disponível para quem quiser usar a própria chave; sem nenhuma chave, o assistente local responde.
 
@@ -88,6 +88,19 @@ Exemplos:
 - `2 esfihas de carne` → busca `esfiha de carne`
 - `1 colher de sopa de chia` → busca `chia`
 - `1 Big Mac 219g` → busca `big mac`, com 219 g explícitos
+
+## Cache persistente de alimentos
+
+Todo resultado encontrado é gravado na tabela `public.viva_foods`, para que o mesmo alimento não seja pesquisado de novo:
+
+- resultado encontrado: reaproveitado por **180 dias**;
+- resultado não encontrado **não** é gravado, para não bloquear um alimento após uma falha passageira do Open Food Facts;
+- cada leitura incrementa `hits` e atualiza `last_used_at`;
+- se o cache estiver vencido e o Open Food Facts falhar, o app devolve o último valor válido em vez de perder o alimento.
+
+A tabela guarda apenas nome, macros, porção, fonte e URL pública. Não guarda dados de saúde, conta ou diário. Usuários autenticados só podem **ler**; a gravação passa pela função `viva_save_food`, que valida o formato e os valores. A função `viva_touch_food` conta o uso.
+
+Para ativar em produção, aplique a migração `supabase/migrations/20261122150000_food_cache.sql` no SQL Editor do Supabase. Sem ela, a API continua funcionando: apenas segue consultando o Open Food Facts e ignora o cache.
 
 O Google não oferece uma API pública gratuita de nutrição estruturada; por isso a busca externa usa o Open Food Facts. Se você tiver uma API de busca própria, ela pode ser adicionada em `api/food.mjs`.
 

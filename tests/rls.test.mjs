@@ -2,8 +2,11 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 
-const migrationPath = fileURLToPath(new URL("../supabase/migrations/20261122090000_init.sql", import.meta.url));
-const migration = fs.readFileSync(migrationPath, "utf8");
+const migrationDir = fileURLToPath(new URL("../supabase/migrations", import.meta.url));
+const migrations = fs.readdirSync(migrationDir)
+  .filter((file) => file.endsWith(".sql"))
+  .sort()
+  .map((file) => fs.readFileSync(`${migrationDir}/${file}`, "utf8"));
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
@@ -75,7 +78,7 @@ await db.exec(`
 `);
 
 try {
-  await db.exec(migration);
+  for (const migration of migrations) await db.exec(migration);
 } catch (error) {
   console.error("A migração não aplicou:", error.message);
   process.exit(1);
@@ -222,6 +225,118 @@ await check("11. usuário anônimo só acessa a própria linha", async () => {
     denied = error.code === "42501";
   }
   assert(denied, "anônimo não deve inserir para A");
+});
+
+await check("12. a tabela de cache existe e tem RLS forçado", async () => {
+  await asPostgres();
+  const columns = await db.query(`
+    select column_name from information_schema.columns
+    where table_schema = 'public' and table_name = 'viva_foods'
+    order by ordinal_position
+  `);
+  const names = columns.rows.map((row) => row.column_name);
+  for (const name of ["query", "food", "found", "source", "source_url", "hits", "created_at", "updated_at", "last_used_at"]) {
+    assert(names.includes(name), `coluna ${name} ausente`);
+  }
+  const rls = await db.query(`
+    select relrowsecurity, relforcerowsecurity
+    from pg_class where oid = 'public.viva_foods'::regclass
+  `);
+  equal(rls.rows[0].relrowsecurity, true, "RLS deve estar ligado");
+  equal(rls.rows[0].relforcerowsecurity, true, "RLS deve ser forçado");
+});
+
+await check("13. anon não lê nem grava no cache", async () => {
+  await asAnon();
+  let readDenied = false;
+  try {
+    await db.query("select * from public.viva_foods");
+  } catch (error) {
+    readDenied = error.code === "42501";
+  }
+  assert(readDenied, "select como anon deveria ser negado");
+  let writeDenied = false;
+  try {
+    await db.query("select public.viva_save_food('anon', null, false, 'Open Food Facts', null)");
+  } catch (error) {
+    writeDenied = error.code === "42501";
+  }
+  assert(writeDenied, "RPC como anon deveria ser negado");
+});
+
+await check("14. usuário autenticado lê o cache, mas não escreve direto na tabela", async () => {
+  await asPostgres();
+  await db.query(`
+    insert into public.viva_foods (query, food, found, source, source_url)
+    values ('big mac', '{"name":"Big Mac","kcal":257,"protein":11.8,"carbs":20.1,"fat":15,"servingGrams":219}'::jsonb, true, 'Open Food Facts', 'https://world.openfoodfacts.org/product/1')
+    on conflict (query) do update set food = excluded.food
+  `);
+  await asUser(A);
+  const rows = await db.query("select query, food from public.viva_foods where query = 'big mac'");
+  equal(rows.rows.length, 1, "usuário deve ler o cache");
+  equal(rows.rows[0].food.name, "Big Mac", "conteúdo do cache");
+
+  let insertDenied = false;
+  try {
+    await db.query("insert into public.viva_foods (query, food, found) values ('pizza', '{}'::jsonb, true)");
+  } catch (error) {
+    insertDenied = error.code === "42501";
+  }
+  assert(insertDenied, "insert direto deveria ser negado");
+
+  let updateDenied = false;
+  try {
+    await db.query("update public.viva_foods set hits = 99 where query = 'big mac'");
+  } catch (error) {
+    updateDenied = error.code === "42501";
+  }
+  assert(updateDenied, "update direto deveria ser negado");
+});
+
+await check("15. RPC grava, atualiza e conta o uso do cache", async () => {
+  await asUser(A);
+  const chia = JSON.stringify({ name: "Chia", kcal: 455, protein: 17.9, carbs: 9.8, fat: 31, servingGrams: 250 });
+  await db.query("select public.viva_save_food($1, $2::jsonb, true, $3, $4)", ["chia", chia, "Open Food Facts", "https://world.openfoodfacts.org/product/2"]);
+  const saved = await db.query("select food, found, source_url from public.viva_foods where query = 'chia'");
+  equal(saved.rows.length, 1, "RPC deve inserir");
+  equal(saved.rows[0].food.kcal, 455, "kcal salva");
+  equal(saved.rows[0].source_url, "https://world.openfoodfacts.org/product/2", "URL salva");
+
+  const updated = JSON.stringify({ name: "Chia", kcal: 460, protein: 18, carbs: 10, fat: 31, servingGrams: 250 });
+  await db.query("select public.viva_save_food($1, $2::jsonb, true, $3, null)", ["chia", updated, "Open Food Facts"]);
+  const afterUpdate = await db.query("select food from public.viva_foods where query = 'chia'");
+  equal(afterUpdate.rows[0].food.kcal, 460, "RPC deve atualizar");
+
+  const beforeTouch = await db.query("select updated_at from public.viva_foods where query = 'big mac'");
+  await db.query("select pg_sleep(0.03)");
+  await db.query("select public.viva_touch_food('big mac')");
+  const touched = await db.query("select hits, updated_at from public.viva_foods where query = 'big mac'");
+  equal(touched.rows[0].hits, 1, "touch deve contar o uso");
+  equal(new Date(touched.rows[0].updated_at).getTime(), new Date(beforeTouch.rows[0].updated_at).getTime(), "touch não deve renovar a validade");
+
+  let invalidQuery = false;
+  try {
+    await db.query("select public.viva_save_food('x', null, false, 'Open Food Facts', null)");
+  } catch (error) {
+    invalidQuery = error.code === "22023";
+  }
+  assert(invalidQuery, "query curta deveria ser recusada");
+
+  let invalidFood = false;
+  try {
+    await db.query("select public.viva_save_food('ab', '{\"name\":\"X\"}'::jsonb, true, 'Open Food Facts', null)");
+  } catch (error) {
+    invalidFood = error.code === "22023";
+  }
+  assert(invalidFood, "alimento sem macros deveria ser recusado");
+
+  let invalidUrl = false;
+  try {
+    await db.query("select public.viva_save_food('ab', '{\"name\":\"X\",\"kcal\":100,\"protein\":1,\"carbs\":1,\"fat\":1,\"url\":\"javascript:alert(1)\"}'::jsonb, true, 'Open Food Facts', null)");
+  } catch (error) {
+    invalidUrl = error.code === "22023";
+  }
+  assert(invalidUrl, "URL fora de http(s) deveria ser recusada");
 });
 
 await asPostgres();

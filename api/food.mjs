@@ -4,6 +4,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "https://fmkmrrqseijcgcawqzoj.s
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || "sb_publishable__fM5rGKVNvICUJCoAJL6Jg_xZHtp9ES";
 const SOURCE = "Open Food Facts";
 const CACHE_TTL = 10 * 60_000;
+const FOOD_CACHE_TTL = 180 * 24 * 60 * 60_000;
 const RATE_LIMIT = 20;
 const RATE_WINDOW = 60_000;
 const CACHE = new Map();
@@ -126,7 +127,7 @@ async function fetchProducts(query) {
     url.search = url.search.replace(/\+/g, "%20");
     try {
       const upstream = await fetch(url, {
-        headers: { Accept: "application/json", "User-Agent": "Viva/2.8.1 (https://viva-rouge-omega.vercel.app)" },
+        headers: { Accept: "application/json", "User-Agent": "Viva/2.9.0 (https://viva-rouge-omega.vercel.app)" },
         signal: AbortSignal.timeout(6000)
       });
       if (upstream.ok) {
@@ -175,6 +176,65 @@ async function searchOpenFoodFacts(name) {
   return best?.food || null;
 }
 
+function supabaseHeaders(auth) {
+  return { apikey: SUPABASE_KEY, Authorization: auth, "Content-Type": "application/json" };
+}
+
+async function readFoodCache(name, auth) {
+  try {
+    const url = `${SUPABASE_URL}/rest/v1/viva_foods?query=eq.${encodeURIComponent(name)}&select=query,food,found,source,source_url,updated_at&limit=1`;
+    const response = await fetch(url, {
+      headers: supabaseHeaders(auth),
+      signal: AbortSignal.timeout(4000)
+    });
+    if (!response.ok) return null;
+    const rows = await response.json().catch(() => null);
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row?.found) return null;
+    const age = Date.now() - new Date(row.updated_at).getTime();
+    return { row, stale: !Number.isFinite(age) || age > FOOD_CACHE_TTL };
+  } catch {
+    return null;
+  }
+}
+
+async function saveFoodCache(name, food, auth) {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/rpc/viva_save_food`, {
+      method: "POST",
+      headers: supabaseHeaders(auth),
+      body: JSON.stringify({
+        p_query: name,
+        p_food: food,
+        p_found: Boolean(food),
+        p_source: food?.source || SOURCE,
+        p_source_url: food?.url || null
+      }),
+      signal: AbortSignal.timeout(4000)
+    });
+  } catch {
+    // A busca continua funcionando mesmo sem a tabela de cache.
+  }
+}
+
+function touchFoodCache(name, auth) {
+  fetch(`${SUPABASE_URL}/rest/v1/rpc/viva_touch_food`, {
+    method: "POST",
+    headers: supabaseHeaders(auth),
+    body: JSON.stringify({ p_query: name }),
+    signal: AbortSignal.timeout(4000)
+  }).catch(() => {});
+}
+
+function cachedFood(row) {
+  if (!row?.food || typeof row.food !== "object") return null;
+  return {
+    ...row.food,
+    source: row.food.source || row.source || SOURCE,
+    url: row.food.url || row.source_url || ""
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") return json(res, 204, {});
   if (req.method === "GET") return json(res, 200, { configured: true, source: SOURCE });
@@ -205,20 +265,44 @@ export default async function handler(req, res) {
   if (name.length < 2) return json(res, 400, { error: "missing_name" });
 
   const key = name;
-  const cached = CACHE.get(key);
-  if (cached && Date.now() - cached.at < CACHE_TTL) return json(res, 200, { found: true, food: cached.food });
+  const memory = CACHE.get(key);
+  if (memory && Date.now() - memory.at < CACHE_TTL) return json(res, 200, { found: true, food: memory.food });
+
+  const persisted = await readFoodCache(name, auth);
+  if (persisted && !persisted.stale) {
+    const food = cachedFood(persisted.row);
+    if (food) {
+      touchFoodCache(name, auth);
+      return json(res, 200, { found: true, food });
+    }
+  }
 
   let food = null;
+  let lookupFailed = false;
   try {
     food = await searchOpenFoodFacts(name);
   } catch {
-    return json(res, 502, { error: "lookup_unavailable" });
+    lookupFailed = true;
   }
-  if (!food) return json(res, 404, { found: false });
-  CACHE.set(key, { at: Date.now(), food });
-  if (CACHE.size > 200) {
-    const oldest = [...CACHE.entries()].sort((a, b) => a[1].at - b[1].at)[0];
-    if (oldest) CACHE.delete(oldest[0]);
+
+  if (food) {
+    CACHE.set(key, { at: Date.now(), food });
+    if (CACHE.size > 200) {
+      const oldest = [...CACHE.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+      if (oldest) CACHE.delete(oldest[0]);
+    }
+    await saveFoodCache(name, food, auth);
+    return json(res, 200, { found: true, food });
   }
-  return json(res, 200, { found: true, food });
+
+  if (persisted?.row?.found) {
+    const staleFood = cachedFood(persisted.row);
+    if (staleFood) {
+      touchFoodCache(name, auth);
+      return json(res, 200, { found: true, food: staleFood });
+    }
+  }
+
+  if (lookupFailed) return json(res, 502, { error: "lookup_unavailable" });
+  return json(res, 404, { found: false });
 }

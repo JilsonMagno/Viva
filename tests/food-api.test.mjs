@@ -23,10 +23,29 @@ function request(body, headers = {}) {
 }
 
 const calls = [];
+const cacheStore = new Map();
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url);
   if (target.includes("/auth/v1/user")) return { ok: true, json: async () => ({ id: "user-test" }) };
+  if (target.includes("/rest/v1/viva_foods?")) {
+    const query = new URL(target).searchParams.get("query")?.replace(/^eq\./, "");
+    const row = cacheStore.get(query);
+    return { ok: true, json: async () => (row ? [row] : []) };
+  }
+  if (target.includes("/rest/v1/rpc/viva_save_food")) {
+    const body = JSON.parse(options.body);
+    cacheStore.set(body.p_query, {
+      query: body.p_query,
+      food: body.p_food,
+      found: body.p_found,
+      source: body.p_source,
+      source_url: body.p_source_url,
+      updated_at: new Date().toISOString()
+    });
+    return { ok: true, json: async () => ({}) };
+  }
+  if (target.includes("/rest/v1/rpc/viva_touch_food")) return { ok: true, json: async () => ({}) };
   calls.push(target);
   const query = new URL(target).searchParams.get("search_terms");
   if (query === "esfihas") return { ok: true, json: async () => ({ products: [] }) };
@@ -129,11 +148,26 @@ await check("quantidade e unidade saem do nome pesquisado", async () => {
   assert(calls[0].includes("search_terms=chia"), "só o alimento");
 });
 
+await check("segunda busca usa a tabela de cache", async () => {
+  calls.length = 0;
+  const first = response();
+  await handler(request({ name: "esfiha de queijo" }), first);
+  assert(first.statusCode === 200, `primeira busca ${first.statusCode}`);
+  const afterFirst = calls.length;
+  const { default: handlerB } = await import("../api/food.mjs?food-cache-test");
+  const second = response();
+  await handlerB(request({ name: "esfiha de queijo" }), second);
+  assert(second.statusCode === 200, `segunda busca ${second.statusCode}`);
+  assert(second.body.food.name === "Esfiha de carne", "nome veio do cache");
+  assert(calls.length === afterFirst, "não deveria consultar o Open Food Facts de novo");
+});
+
 await check("sem resultado devolve 404", async () => {
   const res = response();
   await handler(request({ name: "sem dados" }), res);
   assert(res.statusCode === 404, `status ${res.statusCode}`);
   assert(res.body.found === false, "found");
+  assert(!cacheStore.has("sem dado"), "resultado ausente não deve ir para o cache");
 });
 
 await check("produto sem macros completos é ignorado", async () => {
@@ -148,4 +182,4 @@ if (failed) {
   console.error(`\n${failed} falha(s).`);
   process.exit(1);
 }
-console.log("\n9 verificações ok, 0 falha(s).");
+console.log("\n10 verificações ok, 0 falha(s).");
