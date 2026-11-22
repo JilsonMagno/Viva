@@ -1,0 +1,4 @@
+project_id = "fmkmrrqseijcgcawqzoj"
+
+[functions.assistente]
+verify_jwt = true
