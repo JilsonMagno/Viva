@@ -85,7 +85,7 @@ index.html                       app (HTML, CSS e JS em um arquivo)
 app.js                           lógica do app (fonte)
 index.template.html              markup e CSS (fonte)
 build.cjs                        gera index.html a partir do template + app.js
-config.js                        URL e chave pública do Supabase (você preenche)
+config.js                        URL e chave pública do Supabase
 manifest.webmanifest             instalação no celular
 icon.svg, icon-192.png, icon-512.png
 sw.js                            cache da casca do app (nunca cacheia /sb/)
