@@ -3,6 +3,7 @@
 Versão com login, dados privados por conta e assistente com ChatGPT.
 Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `index.template.html`) + Supabase (login Google, Postgres com RLS, Edge Function).
 
+
 ## O que já está pronto e testado
 
 - Login com Google pelo Supabase (PKCE), com renovação automática da sessão.
@@ -63,7 +64,7 @@ Valores de rótulos de produtos industrializados podem variar. A base serve para
 - Se dois aparelhos salvarem ao mesmo tempo, vale o último envio.
 - A base tem 83 alimentos, com valores por 100 g da TACO 4ª ed. (NEPA/UNICAMP) e do USDA FoodData Central. Rótulos de produtos industrializados podem variar. Confira a embalagem quando ela existir.
 - As metas são estimativas padrão (Mifflin-St Jeor com fator de atividade 1,5). Não substituem orientação de nutricionista ou médico.
-- A função de IA não tem limite de uso. Defina um limite antes de dar acesso a outras pessoas.
+- A função de IA tem limite em memória de 20 requisições/min por usuário, mas não tem limite diário por conta. Defina um limite persistente antes de dar acesso a outras pessoas.
 
 ## Rodar localmente
 
@@ -88,6 +89,7 @@ config.js                        URL e chave pública do Supabase (você preench
 manifest.webmanifest             instalação no celular
 icon.svg, icon-192.png, icon-512.png
 sw.js                            cache da casca do app (nunca cacheia /sb/)
+supabase/config.toml             verify_jwt da função assistente
 supabase/migrations/             tabela viva_data com RLS
 supabase/functions/assistente/   função que chama a OpenAI
 scripts/deploy-backend.sh        publica migração, segredos e função
