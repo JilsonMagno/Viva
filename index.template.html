@@ -581,8 +581,31 @@ img,svg{display:block}
               <header class="card-head"><h2>Assistente com IA</h2></header>
               <label class="switch" for="pf-ai">
                 <input type="checkbox" id="pf-ai">
-                <span class="sw-copy"><strong>Permitir perguntas à OpenAI</strong><small>Quando ligado, só o texto da sua pergunta é enviado. Refeições, água, atividade e peso nunca saem do Supabase.</small></span>
+                <span class="sw-copy"><strong>Permitir perguntas à IA</strong><small>Quando ligado, a pergunta vai ao provedor escolhido usando a sua chave. Refeições, água, atividade e peso nunca saem do Supabase.</small></span>
               </label>
+              <div id="ai-settings" style="margin-top:14px">
+                <label class="field" for="ai-provider">Provedor
+                  <select id="ai-provider">
+                    <option value="openai">OpenAI</option>
+                    <option value="groq">Groq</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="openrouter">OpenRouter</option>
+                  </select>
+                </label>
+                <label class="field" for="ai-model">Modelo (opcional)
+                  <input id="ai-model" autocomplete="off" placeholder="padrão do provedor">
+                </label>
+                <label class="field" for="ai-key">Sua chave de API
+                  <input id="ai-key" type="password" autocomplete="off" placeholder="Cole sua chave">
+                </label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                  <button class="btn btn-primary" id="btn-ai-save" type="button">Salvar chave</button>
+                  <button class="btn btn-ghost" id="btn-ai-clear" type="button" hidden>Remover chave</button>
+                </div>
+                <p class="fineprint" id="ai-key-status" role="status"></p>
+                <p class="fineprint">A chave fica só neste navegador. Cada pergunta é enviada ao provedor escolhido com a sua chave; o app não guarda a chave no Supabase. Use uma chave com limite de gasto e revogue quando quiser.</p>
+                <p class="fineprint">Obter chave: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI</a> · <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq</a> · <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Gemini</a> · <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a></p>
+              </div>
             </article>
             <article class="card">
               <header class="card-head"><h2>Seus dados</h2></header>

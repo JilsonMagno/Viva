@@ -1,4 +1,4 @@
-const VERSION = "viva-v2.2.0";
+const VERSION = "viva-v2.3.0";
 const SHELL = [
   "./",
   "./index.html",
@@ -32,6 +32,11 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/sb/")) return;
+
+  if (url.pathname.endsWith("/config.js")) {
+    event.respondWith(fetch(request).catch(() => caches.match(request)));
+    return;
+  }
 
   if (request.mode === "navigate") {
     event.respondWith(

@@ -45,6 +45,8 @@ const state = {
   aiBodies: [],
   aiMode: "ok",
   aiAnswer: "Uma dieta equilibrada combina variedade, regularidade e água ao longo do dia.",
+  aiEndpoint: "",
+  lastAI: null,
   authorizeMode: "redirect"
 };
 
@@ -62,6 +64,8 @@ function reset() {
   state.aiBodies = [];
   state.aiMode = "ok";
   state.aiAnswer = "Uma dieta equilibrada combina variedade, regularidade e água ao longo do dia.";
+  state.aiEndpoint = "";
+  state.lastAI = null;
   state.authorizeMode = "redirect";
 }
 
@@ -163,7 +167,14 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === "/config.js") {
     res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-store" });
-    res.end('window.VIVA_CONFIG = { SUPABASE_URL: "/sb", SUPABASE_ANON_KEY: "test-anon", AI_FUNCTION: "assistente" };');
+    res.end(`window.VIVA_CONFIG = { SUPABASE_URL: "/sb", SUPABASE_ANON_KEY: "test-anon", AI_FUNCTION: "assistente", AI_ENDPOINT: ${JSON.stringify(state.aiEndpoint)} };`);
+    return;
+  }
+
+  if (pathname === "/api/ai" && req.method === "POST") {
+    const body = (await readJson(req)) || {};
+    state.lastAI = { provider: body.provider, model: body.model, apiKey: body.apiKey, question: body.question };
+    json(res, { answer: "Resposta BYOK de teste." });
     return;
   }
 
@@ -178,6 +189,7 @@ const server = http.createServer(async (req, res) => {
     if (body.authorizeMode) state.authorizeMode = body.authorizeMode;
     if (body.aiMode) state.aiMode = body.aiMode;
     if (typeof body.aiAnswer === "string") state.aiAnswer = body.aiAnswer;
+    if (typeof body.aiEndpoint === "string") state.aiEndpoint = body.aiEndpoint;
     json(res, { ok: true });
     return;
   }
@@ -217,6 +229,7 @@ const server = http.createServer(async (req, res) => {
       aiCalls: state.aiCalls,
       aiQuestions: state.aiQuestions,
       aiBodies: state.aiBodies,
+      lastAI: state.lastAI,
       tokens: [...state.tokens.keys()],
       refreshTokens: [...state.refresh.keys()]
     });

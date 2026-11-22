@@ -639,7 +639,46 @@ await check("19. login visitante entra e cria dados no Supabase", async () => {
   await context.close();
 });
 
-await check("20. nenhuma exceção de página durante os testes", async () => {
+await check("20. IA usa a chave do próprio usuário e não a salva no Supabase", async () => {
+  await resetAll();
+  const base = demoState();
+  await seed(demoState({ profile: { ...base.profile, aiEnabled: false } }));
+  await setConfig({ aiEndpoint: "/api/ai" });
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await goView(page, "perfil");
+  await page.select("#ai-provider", "groq");
+  await page.type("#ai-model", "llama-test");
+  await page.type("#ai-key", "gsk_test_123");
+  await page.click("#btn-ai-save");
+  await page.waitForFunction(() => document.getElementById("ai-key-status").textContent.includes("Chave salva"), { timeout: 5000 });
+  const stored = await page.evaluate(() => {
+    const session = JSON.parse(localStorage.getItem("viva.session.v2"));
+    return JSON.parse(localStorage.getItem("viva.aiKey.v1:" + session.user.id));
+  });
+  equal(stored.provider, "groq", "provedor salvo");
+  equal(stored.key, "gsk_test_123", "chave salva no navegador");
+  await page.evaluate(() => document.getElementById("pf-ai").click());
+  await send(page, "qual a melhor fruta?");
+  await waitChat(page, "Resposta BYOK de teste.");
+  const state = await getState();
+  equal(state.lastAI.provider, "groq", "provedor enviado ao proxy");
+  equal(state.lastAI.model, "llama-test", "modelo enviado ao proxy");
+  equal(state.lastAI.apiKey, "gsk_test_123", "chave enviada ao proxy");
+  const row = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    return current && JSON.stringify(current.data).includes("Resposta BYOK de teste.") ? current : null;
+  });
+  assert(!JSON.stringify(row.data).includes("gsk_test_123"), "chave não deve ir para o Supabase");
+  await goView(page, "perfil");
+  await page.click("#btn-ai-clear");
+  assert(await page.$eval("#pf-ai", (element) => !element.checked), "IA deve desligar ao remover a chave");
+  await page.close();
+  await setConfig({ aiEndpoint: "" });
+});
+
+await check("21. nenhuma exceção de página durante os testes", async () => {
   assert(pageErrors.length === 0, pageErrors.join(" | "));
 });
 

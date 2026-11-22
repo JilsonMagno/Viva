@@ -5,6 +5,14 @@
   const SB = String(CFG.SUPABASE_URL || "").replace(/\/+$/, "");
   const KEY = String(CFG.SUPABASE_ANON_KEY || "");
   const FN = CFG.AI_FUNCTION || "assistente";
+  const AI_ENDPOINT = String(CFG.AI_ENDPOINT || "");
+  const AI_STORE = "viva.aiKey.v1";
+  const AI_PROVIDERS = {
+    openai: { label: "OpenAI", model: "gpt-4o-mini" },
+    groq: { label: "Groq", model: "llama-3.3-70b-versatile" },
+    gemini: { label: "Google Gemini", model: "gemini-2.0-flash" },
+    openrouter: { label: "OpenRouter", model: "meta-llama/llama-3.3-70b-instruct:free" }
+  };
   const LS_SESSION = "viva.session.v2";
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
@@ -491,6 +499,7 @@
         });
       } catch { /* sair localmente mesmo sem rede */ }
     }
+    if (user) clearAIKey();
     storeSession(null);
     state = null;
     user = null;
@@ -574,6 +583,7 @@
       weightKg: parseNum($("#pf-weight").value),
       goal: $("#pf-goal").value
     };
+    profile.aiEnabled = $("#pf-ai").checked && (!AI_ENDPOINT || !!loadAIKey());
     const errors = validateProfile(profile);
     markFields(errors, { age: "pf-age", height: "pf-height", weight: "pf-weight" });
     const errorBox = $("#profile-error");
@@ -936,8 +946,64 @@
 
   const WELCOME = "Oi! Eu sou a Viva. Posso anotar refeições, água, atividade e peso. Ex.: “comi 2 ovos e um pão”, “bebi 500 ml de água”, “corri 30 min” ou “peso 78,5”.";
 
+  function aiStoreKey() {
+    return `${AI_STORE}:${user?.id || "local"}`;
+  }
+
+  function loadAIKey() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(aiStoreKey()) || "null");
+      if (!raw || typeof raw.key !== "string" || !raw.key) return null;
+      const provider = AI_PROVIDERS[raw.provider] ? raw.provider : "openai";
+      return { provider, model: typeof raw.model === "string" ? raw.model : "", key: raw.key };
+    } catch {
+      return null;
+    }
+  }
+
+  function saveAIKey(value) {
+    localStorage.setItem(aiStoreKey(), JSON.stringify(value));
+  }
+
+  function clearAIKey() {
+    localStorage.removeItem(aiStoreKey());
+  }
+
   async function askAI(question) {
     if (!navigator.onLine) return "Você está offline. Tente de novo quando a conexão voltar.";
+
+    if (AI_ENDPOINT) {
+      const ai = loadAIKey();
+      if (!ai) return "Configure sua chave de IA em Perfil para usar perguntas abertas.";
+      try {
+        const session = await ensureSession();
+        if (!session) {
+          sessionLost();
+          return "Sua sessão expirou. Entre de novo.";
+        }
+        const res = await fetch(AI_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ question, message: question, context: {}, provider: ai.provider, model: ai.model, apiKey: ai.key })
+        });
+        const data = await res.json().catch(() => null);
+        if (res.status === 401) {
+          if (data?.error === "provider_error") return "Sua chave de IA foi recusada. Confira em Perfil.";
+          sessionLost();
+          return "Sua sessão expirou. Entre de novo.";
+        }
+        if (res.status === 400 && data?.error === "missing_api_key") return "Configure sua chave de IA em Perfil.";
+        if (res.status === 429) return "Muitas perguntas em pouco tempo. Espere um minuto e tente de novo.";
+        if (!res.ok) {
+          if (data?.error === "provider_error" && data?.message) return `A IA recusou: ${data.message}`;
+          return "Não consegui falar com a IA agora. Tente de novo em instantes.";
+        }
+        return data?.answer || data?.reply || "A IA não retornou uma resposta.";
+      } catch {
+        return "Não consegui falar com a IA agora. Verifique a conexão.";
+      }
+    }
+
     try {
       const res = await apiFetch(`/functions/v1/${FN}`, {
         method: "POST",
@@ -1320,6 +1386,59 @@
     }
   }
 
+  function renderAISettings() {
+    const provider = $("#ai-provider");
+    if (!provider) return;
+    const ai = loadAIKey();
+    const current = ai?.provider || "openai";
+    provider.value = current;
+    const model = $("#ai-model");
+    if (model) {
+      model.value = ai?.model || "";
+      model.placeholder = `padrão: ${AI_PROVIDERS[current]?.model || ""}`;
+    }
+    const key = $("#ai-key");
+    if (key) {
+      key.value = "";
+      key.placeholder = ai ? "Chave salva. Cole outra para substituir." : "Cole sua chave";
+    }
+    const status = $("#ai-key-status");
+    if (status) status.textContent = ai
+      ? `Chave salva neste navegador (${AI_PROVIDERS[current]?.label || current}).`
+      : "Nenhuma chave salva. A IA fica desligada.";
+    const clear = $("#btn-ai-clear");
+    if (clear) clear.hidden = !ai;
+  }
+
+  function saveAISettings() {
+    const provider = $("#ai-provider")?.value || "openai";
+    const model = ($("#ai-model")?.value || "").trim();
+    const key = ($("#ai-key")?.value || "").trim();
+    const existing = loadAIKey();
+    if (!key && !existing) {
+      toast("Cole sua chave de IA.");
+      return;
+    }
+    if (!key && existing && existing.provider !== provider) {
+      toast("Cole a chave do novo provedor.");
+      return;
+    }
+    saveAIKey({ provider, model, key: key || existing.key });
+    renderAISettings();
+    toast("Chave salva só neste navegador.");
+  }
+
+  function clearAISettings() {
+    clearAIKey();
+    if (state?.profile) state.profile.aiEnabled = false;
+    const toggle = $("#pf-ai");
+    if (toggle) toggle.checked = false;
+    if (state) queueSave();
+    renderChat();
+    renderAISettings();
+    toast("Chave removida. IA desligada.");
+  }
+
   function renderProfile() {
     if (!state) return;
     const target = state.targets || calcTargets(state.profile);
@@ -1333,6 +1452,7 @@
       $("#pf-goal").value = state.profile.goal || "maintain";
     }
     $("#pf-ai").checked = !!state.profile.aiEnabled;
+    renderAISettings();
     $("#targets-summary").textContent = `${nf(target.kcal)} kcal · ${target.protein} g proteína`;
     const last = state.weights.length ? state.weights[state.weights.length - 1] : null;
     const lastText = last ? `último peso ${nf1(last.kg)} kg em ${fmtDay(parseYmd(last.date))}` : "sem registro de peso";
@@ -1397,6 +1517,7 @@
     try {
       const res = await apiFetch(`/rest/v1/viva_data?user_id=eq.${user.id}`, { method: "DELETE" });
       if (!res.ok && res.status !== 404) throw new ApiError("delete", res.status);
+      clearAIKey();
       state = emptyState();
       const form = $("#profile-form");
       if (form) form.reset();
@@ -1433,10 +1554,21 @@
   }
 
   function toggleAI() {
-    state.profile.aiEnabled = $("#pf-ai").checked;
+    const on = $("#pf-ai").checked;
+    if (AI_ENDPOINT && on && !loadAIKey()) {
+      $("#pf-ai").checked = false;
+      state.profile.aiEnabled = false;
+      queueSave();
+      renderChat();
+      renderAISettings();
+      toast("Salve sua chave de IA antes de ligar.");
+      return;
+    }
+    state.profile.aiEnabled = on;
     queueSave();
     renderChat();
-    toast(state.profile.aiEnabled ? "IA ligada. Só a pergunta vai para a OpenAI." : "IA desligada.");
+    renderAISettings();
+    toast(on ? "IA ligada. Cada pergunta usa a sua chave." : "IA desligada.");
   }
 
   function updateOnline() {
@@ -1466,6 +1598,12 @@
     for (const radio of $$("input[name=goal]")) radio.addEventListener("change", updateOnboardingPreview);
     $("#profile-form").addEventListener("submit", submitProfile);
     $("#pf-ai").addEventListener("change", toggleAI);
+    $("#btn-ai-save")?.addEventListener("click", saveAISettings);
+    $("#btn-ai-clear")?.addEventListener("click", clearAISettings);
+    $("#ai-provider")?.addEventListener("change", () => {
+      const model = $("#ai-model");
+      if (model) model.placeholder = `padrão: ${AI_PROVIDERS[$("#ai-provider").value]?.model || ""}`;
+    });
     $("#btn-water-250").addEventListener("click", () => addWater(250));
     $("#btn-water-500").addEventListener("click", () => addWater(500));
     $("#btn-water-undo").addEventListener("click", undoWater);

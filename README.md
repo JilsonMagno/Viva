@@ -1,17 +1,17 @@
 # Viva: assistente pessoal de saúde (Fase 2)
 
-Versão com login, dados privados por conta e assistente com ChatGPT.
-Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `index.template.html`) + Supabase (login Google, Postgres com RLS, Edge Function).
+Versão com login, dados privados por conta e IA com a chave de cada usuário.
+Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `index.template.html`) + Supabase (login visitante/Google opcional, Postgres com RLS) + Vercel (hosting e proxy `/api/ai`).
 
 
 ## O que já está pronto e testado
 
-- Login com Google pelo Supabase (PKCE), com renovação automática da sessão.
+- Login com Google pelo Supabase (PKCE), opcional e desligado por padrão, com renovação automática da sessão.
 - Login visitante (anônimo) para usar sem OAuth; os dados ficam vinculados ao navegador.
 - Primeiro acesso sem dados de exemplo: você informa idade, altura, peso e objetivo, e a Viva calcula as metas iniciais.
 - Cada conta lê e grava só a própria linha no banco (RLS).
 - Registros pelo assistente (refeições, água, atividade e peso) são salvos na conta.
-- Perguntas vão ao ChatGPT somente se você ligar a opção em Perfil.
+- Perguntas vão ao provedor de IA escolhido, com a chave do próprio usuário, somente se você ligar a opção em Perfil.
 - Exportar os dados em JSON e apagar tudo, com confirmação em dois toques.
 - Instalável no celular (tela inicial), com casca em cache.
 - Base de 83 alimentos com valores por 100 g, fonte e referência por item (TACO 4ª ed. e USDA FoodData Central).
@@ -19,28 +19,49 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 Testes:
 - `node tests/rls.test.mjs`: 11 verificações da migração e das regras de acesso, em Postgres real (PGlite), incluindo um usuário anônimo.
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
-- `node tests/e2e.test.mjs`: 20 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, exportação, exclusão, logout, isolamento entre contas, links diretos, PWA, acessibilidade, falha de rede e layout em 390 px.
+- `node tests/e2e.test.mjs`: 21 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA com chave do próprio usuário (BYOK), exportação, exclusão, logout, isolamento entre contas, links diretos, PWA, acessibilidade, falha de rede e layout em 390 px.
 - `npm test`: roda as três suítes.
 
 ## O que depende da sua conta (não consigo criar por você)
 
-Criar contas, aceitar cobranças e gerar chaves exige o seu login. Estes são os passos mínimos:
+Criar contas e aceitar cobranças exige o seu login. Estes são os passos mínimos:
 
 1. **Supabase**: crie um projeto (plano gratuito). Em *Project Settings > API*, copie a **URL** e a chave **publishable/anon**.
-2. **Google**: no Google Cloud, crie um *OAuth client* do tipo *Web application*. Em *Authorized redirect URIs*, use `https://SEU-PROJETO.supabase.co/auth/v1/callback`. Depois, em Supabase *Authentication > Providers > Google*, cole o Client ID e o Client Secret.
-3. **Supabase, URLs de retorno**: em *Authentication > URL Configuration*, adicione a URL onde o site vai ficar (por exemplo `https://seu-site.netlify.app/`) em *Redirect URLs*.
-4. **OpenAI**: crie uma chave em platform.openai.com. A API é cobrada à parte da assinatura do ChatGPT. Escolha um modelo da lista atual em developers.openai.com/api/docs/models e use o ID exato dele.
-5. **Backend**: instale a Supabase CLI e rode `scripts/deploy-backend.sh` com as variáveis indicadas no próprio script.
-6. **Site**: preencha `config.js` com a URL e a chave do passo 1. Publique esta pasta em um hosting estático (Netlify Drop, Cloudflare Pages ou GitHub Pages). O site precisa estar em HTTPS.
+2. **Supabase, login visitante**: em *Authentication > Providers*, ative **Anonymous sign-ins**. É o caminho sem OAuth e o de menor atrito para compartilhar o link.
+3. **Google (opcional)**: no Google Cloud, crie um *OAuth client* do tipo *Web application*. Em *Authorized redirect URIs*, use `https://SEU-PROJETO.supabase.co/auth/v1/callback`. Depois, em Supabase *Authentication > Providers > Google*, cole o Client ID e o Client Secret.
+4. **Supabase, URLs de retorno (só com Google)**: em *Authentication > URL Configuration*, adicione a URL do site em *Redirect URLs*.
+5. **Backend**: aplique a migração de `supabase/migrations/` no SQL Editor ou pela Supabase CLI para criar `viva_data` com RLS. A Edge Function `assistente` é legada; a IA de produção usa `/api/ai` no Vercel.
+6. **Site**: preencha `config.js` com a URL e a chave do passo 1. O projeto Vercel já está conectado ao repositório; `npx vercel --prod` publica a pasta `public`.
+7. **IA (por usuário)**: cada pessoa cola a própria chave em *Perfil > Assistente com IA*. O dono do app não precisa de chave da OpenAI e não paga a IA.
 
 Depois disso, abra o link no celular e toque em *Adicionar à tela inicial*.
 
 ## Decisões
 
 - **Banco e login: Supabase.** Uma linha `jsonb` por conta. É simples e suficiente para duas pessoas. Separar em tabelas por tipo de registro fica para a Fase 3.
-- **IA: OpenAI, chamada pela Edge Function.** A chave fica como segredo do servidor e nunca vai ao navegador. A opção vem desligada. Registros de refeição, água, atividade e peso não são enviados à OpenAI.
+- **IA: BYOK (bring your own key).** Cada usuário cola a própria chave (OpenAI, Groq, Gemini ou OpenRouter) em *Perfil*. A chave fica no `localStorage` do navegador, separada por `user.id`, e não vai para o Supabase. O app chama `/api/ai` no Vercel, que valida o JWT do Supabase e repassa a chave ao provedor sem armazená-la. A opção vem desligada. Registros de refeição, água, atividade e peso não são enviados ao provedor.
 - **Dados de saúde (LGPD):** cada conta vê só os próprios dados. O app tem exportação e exclusão. O texto de consentimento deve passar por revisão jurídica antes de o app ser usado por mais pessoas.
 - **Fora desta versão:** lembretes, compartilhamento entre contas e exclusão da conta de login (o app apaga os dados, mas o usuário de autenticação continua existindo no Supabase).
+
+## IA com a chave do usuário (BYOK)
+
+1. Abra *Perfil > Assistente com IA*.
+2. Escolha o provedor: OpenAI, Groq, Google Gemini ou OpenRouter.
+3. Cole a sua chave e toque em *Salvar chave*.
+4. Ligue *Permitir perguntas à IA*.
+
+A chave fica no `localStorage` do navegador, separada pelo `user.id`. Ela não é gravada no Supabase, não entra na exportação JSON e não vai para o repositório. O app envia a chave apenas para `/api/ai`, que valida o JWT do Supabase e repassa a chamada ao provedor sem armazenar a chave.
+
+Use uma chave com limite de gasto. Para revogar, apague a chave no painel do provedor e remova a chave em *Perfil*. Em um dispositivo compartilhado, remova a chave ao sair.
+
+Provedores e modelos padrão:
+
+- **OpenAI:** `gpt-4o-mini`
+- **Groq:** `llama-3.3-70b-versatile`
+- **Google Gemini:** `gemini-2.0-flash`
+- **OpenRouter:** `meta-llama/llama-3.3-70b-instruct:free`
+
+O campo *Modelo* é opcional; se ficar vazio, o proxy usa o padrão do provedor.
 
 ## Base de alimentos e fontes
 
@@ -65,7 +86,8 @@ Valores de rótulos de produtos industrializados podem variar. A base serve para
 - Se dois aparelhos salvarem ao mesmo tempo, vale o último envio.
 - A base tem 83 alimentos, com valores por 100 g da TACO 4ª ed. (NEPA/UNICAMP) e do USDA FoodData Central. Rótulos de produtos industrializados podem variar. Confira a embalagem quando ela existir.
 - As metas são estimativas padrão (Mifflin-St Jeor com fator de atividade 1,5). Não substituem orientação de nutricionista ou médico.
-- A função de IA tem limite em memória de 20 requisições/min por usuário, mas não tem limite diário por conta. Defina um limite persistente antes de dar acesso a outras pessoas.
+- A IA usa a cota do provedor do próprio usuário. A chave fica no navegador; use uma chave com limite de gasto e revogue se o dispositivo for compartilhado. O proxy `/api/ai` não tem cota global porque não usa chave do dono.
+- A chave de IA fica no `localStorage`; como qualquer credencial no navegador, ela pode ser lida por XSS ou por quem tiver acesso ao dispositivo. Não use uma chave com gasto ilimitado.
 
 ## Rodar localmente
 
@@ -86,13 +108,14 @@ index.html                       app (HTML, CSS e JS em um arquivo)
 app.js                           lógica do app (fonte)
 index.template.html              markup e CSS (fonte)
 build.cjs                        gera index.html a partir do template + app.js
-config.js                        URL e chave pública do Supabase
+config.js                        URL e chave pública do Supabase; endpoint /api/ai
+api/ai.mjs                       proxy BYOK no Vercel; valida o JWT e repassa a chave do usuário
 manifest.webmanifest             instalação no celular
 icon.svg, icon-192.png, icon-512.png
 sw.js                            cache da casca do app (nunca cacheia /sb/)
-supabase/config.toml             verify_jwt da função assistente
+supabase/config.toml             verify_jwt da função assistente legada
 supabase/migrations/             tabela viva_data com RLS
-supabase/functions/assistente/   função que chama a OpenAI
+supabase/functions/assistente/   função legada de IA com chave do servidor
 scripts/deploy-backend.sh        publica migração, segredos e função
 tests/rls.test.mjs               RLS em Postgres real (PGlite)
 tests/foods.test.mjs             base de alimentos e fontes
