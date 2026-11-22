@@ -350,13 +350,17 @@ const server = http.createServer(async (req, res) => {
     }
     const body = (await readJson(req)) || {};
     state.aiCalls += 1;
-    state.aiQuestions.push(body.question || "");
+    state.aiQuestions.push(body.question || body.message || "");
     state.aiBodies.push(body);
     if (state.aiMode === "fail") {
       json(res, { error: "upstream_error" }, 502);
       return;
     }
     if (state.aiMode === "slow") await new Promise((resolve) => setTimeout(resolve, 1200));
+    if (state.aiMode === "reply") {
+      json(res, { reply: state.aiAnswer });
+      return;
+    }
     json(res, { answer: state.aiAnswer, model: "test-model" });
     return;
   }

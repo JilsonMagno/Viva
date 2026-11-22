@@ -906,7 +906,8 @@
       const res = await apiFetch(`/functions/v1/${FN}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question })
+        // Compatível com { message, context } -> { reply } e com { question } -> { answer }.
+        body: JSON.stringify({ question, message: question, context: {} })
       });
       if (res.status === 429) return "Muitas perguntas em pouco tempo. Espere um minuto e tente de novo.";
       if (res.status === 503) return "A IA ainda não está configurada no servidor. Avise quem publicou o app.";
@@ -916,7 +917,7 @@
       }
       if (!res.ok) return "Não consegui falar com a IA agora. Tente de novo em instantes.";
       const data = await res.json().catch(() => null);
-      return (data && data.answer) || "A IA não retornou uma resposta.";
+      return (data && (data.answer || data.reply)) || "A IA não retornou uma resposta.";
     } catch {
       return "Não consegui falar com a IA agora. Verifique a conexão.";
     }

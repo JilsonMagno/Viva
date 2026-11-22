@@ -338,7 +338,7 @@ await check("7. peso por texto atualiza o histórico e a diferença", async () =
   await page.close();
 });
 
-await check("8. pergunta aberta envia somente o texto para a IA", async () => {
+await check("8. pergunta aberta envia texto e contexto vazio, e aceita answer/reply", async () => {
   await resetAll();
   await seed(demoState({ days: {} }));
   await setConfig({ aiAnswer: "Uma boa dieta varia os grupos alimentares." });
@@ -351,9 +351,19 @@ await check("8. pergunta aberta envia somente o texto para a IA", async () => {
   const state = await getState();
   equal(state.aiCalls, 1, "chamadas à IA");
   equal(state.aiQuestions[0], question, "pergunta enviada");
-  equal(JSON.stringify(Object.keys(state.aiBodies[0])), JSON.stringify(["question"]), "o corpo deve ter só a pergunta");
+  const body = state.aiBodies[0];
+  equal(body.question, question, "campo question");
+  equal(body.message, question, "campo message");
+  equal(JSON.stringify(body.context), "{}", "contexto deve ir vazio");
+  equal(JSON.stringify(Object.keys(body)), JSON.stringify(["question", "message", "context"]), "corpo inesperado");
   const row = await rowFor(USER_A.id);
   equal(Object.keys(row.data.days).length, 0, "pergunta não deveria criar registros de refeição");
+  await setConfig({ aiMode: "reply", aiAnswer: "Resposta no formato reply." });
+  await send(page, "e no formato reply?");
+  await waitChat(page, "Resposta no formato reply.");
+  const replyState = await getState();
+  equal(replyState.aiCalls, 2, "chamadas à IA com reply");
+  equal(replyState.aiBodies[1].message, "e no formato reply?", "message no segundo envio");
   await page.close();
 });
 
