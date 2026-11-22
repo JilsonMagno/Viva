@@ -216,7 +216,7 @@ img,svg{display:block}
 .spark .line{fill:none;stroke:var(--green-3);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
 .spark .area{fill:rgba(47,138,87,.12);stroke:none}
 .list{display:grid;gap:2px;margin:0;padding:0;list-style:none}
-.row{display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line)}
+.row{display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line);min-width:0}
 .row:last-child{border-bottom:0}
 .row .r-ico{width:34px;height:34px;border-radius:11px;background:var(--surface-2);display:grid;place-items:center;font-size:1rem;flex:none}
 .row .r-ico svg{width:18px;height:18px;color:var(--green-2)}
@@ -226,13 +226,29 @@ img,svg{display:block}
 .row .r-kcal{font-size:.84rem;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .row .r-del{border:0;background:none;color:var(--muted);padding:6px;border-radius:8px;line-height:0}
 .row .r-del:hover{color:var(--danger);background:var(--surface-2)}
+.meal-group{display:grid;gap:2px;min-width:0}
+.meal-group + .meal-group{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.meal-group h3{font-size:.72rem;font-weight:750;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 2px}
+.week-bars{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;align-items:end;margin-top:12px}
+.week-bar{display:grid;grid-template-rows:auto 84px auto;justify-items:center;gap:4px;min-width:0;color:var(--muted);font-size:.62rem;font-weight:650}
+.week-bar b{font-size:.68rem;color:var(--ink-2);font-variant-numeric:tabular-nums;min-height:1em}
+.week-track{width:100%;max-width:22px;height:84px;display:flex;align-items:flex-end;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden}
+.week-track i{display:block;width:100%;border-radius:6px 6px 0 0;background:linear-gradient(180deg,var(--green-3),var(--sage));min-height:4px}
+.week-bar span{text-transform:uppercase;font-size:.6rem}
+.habit-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-top:12px}
+.habit-day{display:grid;justify-items:center;gap:5px;font-size:.62rem;font-weight:650;color:var(--muted)}
+.habit-dot{width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:var(--surface-2)}
+.habit-dot.l1{background:var(--sage);border-color:var(--sage)}
+.habit-dot.l2{background:var(--green-3);border-color:var(--green-3)}
+.habit-dot.l3{background:var(--green);border-color:var(--green)}
 .empty{color:var(--muted);font-size:.86rem;padding:10px 2px}
 .empty strong{display:block;color:var(--ink-2);font-size:.92rem;margin-bottom:2px}
 /* abas e menu lateral */
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(4,1fr);padding:8px 8px calc(8px + env(safe-area-inset-bottom));background:rgba(255,253,248,.92);border-top:1px solid var(--line);backdrop-filter:blur(14px)}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));padding:7px 6px calc(7px + env(safe-area-inset-bottom));background:rgba(255,253,248,.92);border-top:1px solid var(--line);backdrop-filter:blur(14px)}
 @media (prefers-color-scheme:dark){.tabbar{background:rgba(22,34,26,.92)}}
-.tab{display:grid;justify-items:center;gap:3px;padding:7px 4px;border:0;background:none;border-radius:14px;color:var(--muted);font-size:.68rem;font-weight:700}
-.tab svg{width:22px;height:22px}
+.tab{display:grid;justify-items:center;gap:2px;padding:7px 1px;border:0;background:none;border-radius:14px;color:var(--muted);font-size:.61rem;font-weight:700;min-width:0}
+.tab span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.tab svg{width:20px;height:20px}
 .tab[aria-current="page"]{color:var(--green-2);background:rgba(47,138,87,.1)}
 .sidebar{position:sticky;top:0;height:100dvh;padding:28px 20px;background:var(--surface);border-right:1px solid var(--line);flex-direction:column;gap:26px}
 .sidebar .brand{padding:0 6px}
@@ -413,9 +429,11 @@ img,svg{display:block}
   <aside class="sidebar">
     <div class="brand"><img src="icon.svg" alt=""><span>Viva</span></div>
     <nav class="side-nav" aria-label="Navegação principal">
-      <button class="side-link" type="button" data-view="hoje" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9h13v-9"/><path d="M10 19v-5h4v5"/></svg>Hoje</button>
-      <button class="side-link" type="button" data-view="diario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Diário</button>
-      <button class="side-link" type="button" data-view="viva"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H7l-4 2 1.4-4.2A8 8 0 1 1 21 12Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg>Viva</button>
+      <button class="side-link" type="button" data-view="hoje" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9h13v-9"/><path d="M10 19v-5h4v5"/></svg>Início</button>
+      <button class="side-link" type="button" data-view="viva"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H7l-4 2 1.4-4.2A8 8 0 1 1 21 12Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg>Assistente</button>
+      <button class="side-link" type="button" data-view="alimentacao"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a2 2 0 0 0 4 0V3M8 10v11"/><path d="M17 3c-1.6 2-2.5 4.4-2.5 7 0 2 1 3.5 2.5 4v7"/></svg>Alimentação</button>
+      <button class="side-link" type="button" data-view="atividades"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="m7 21 3-6 3 2 2 4"/><path d="m9 13 4-4 3 3 3 1"/></svg>Atividades</button>
+      <button class="side-link" type="button" data-view="diario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 4-5 3 3 5-7"/></svg>Evolução</button>
       <button class="side-link" type="button" data-view="perfil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>Perfil</button>
     </nav>
     <div class="side-foot">
@@ -462,21 +480,18 @@ img,svg{display:block}
                 </div>
               </div>
             </article>
-            <article class="card" aria-labelledby="meals-title">
-              <header class="card-head">
-                <h2 id="meals-title">Refeições de hoje</h2>
-                <button class="link" type="button" data-focus-chat>+ Anotar</button>
-              </header>
-              <div id="meal-list"></div>
-            </article>
             <article class="card" aria-labelledby="quick-title">
               <header class="card-head"><h2 id="quick-title">Atalhos</h2></header>
               <div class="quick-grid">
                 <button class="quick" type="button" data-quick="meal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a2 2 0 0 0 4 0V3M8 10v11"/><path d="M17 3c-1.6 2-2.5 4.4-2.5 7 0 2 1 3.5 2.5 4v7"/></svg><span>Refeição</span></button>
                 <button class="quick" type="button" data-quick="water"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.3 6 10.5a6 6 0 0 1-12 0C6 9.3 12 3 12 3Z"/></svg><span>+ 250 ml</span></button>
                 <button class="quick" type="button" data-quick="weight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 5V4h8v1M12 10l2.5-2"/></svg><span>Peso</span></button>
-                <button class="quick" type="button" data-quick="diary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Diário</span></button>
+                <button class="quick" type="button" data-quick="diary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 4-5 3 3 5-7"/></svg><span>Evolução</span></button>
               </div>
+            </article>
+            <article class="card" aria-labelledby="habit-title">
+              <header class="card-head"><h2 id="habit-title">Hábitos da semana</h2><span class="sub" id="habit-streak">Comece hoje</span></header>
+              <div class="habit-days" id="habit-days"></div>
             </article>
           </div>
           <div class="stack">
@@ -496,15 +511,61 @@ img,svg{display:block}
               <svg class="spark" id="weight-spark" viewBox="0 0 300 56" preserveAspectRatio="none" aria-hidden="true"></svg>
               <p class="targets-note" id="weight-note">Registre seu peso pelo assistente: “peso 78,5”.</p>
             </article>
+          </div>
+        </div>
+      </section>
+      <section id="view-alimentacao" class="view" data-view-panel="alimentacao" hidden>
+        <div class="greet"><span class="eyebrow">Alimentação</span><h1>O que você comeu hoje.</h1></div>
+        <div class="cols">
+          <div class="stack">
+            <article class="card" aria-labelledby="meals-title">
+              <header class="card-head">
+                <h2 id="meals-title">Refeições de hoje</h2>
+                <button class="link" type="button" data-focus-chat>+ Anotar</button>
+              </header>
+              <div id="meal-list"></div>
+            </article>
+          </div>
+          <div class="stack">
+            <article class="card">
+              <header class="card-head"><h2>Resumo do dia</h2><span class="sub" id="meal-total">0 kcal</span></header>
+              <p class="targets-note" id="meal-summary">Nenhuma refeição anotada ainda.</p>
+            </article>
+            <article class="card">
+              <header class="card-head"><h2>Anotar ou pedir ideia</h2></header>
+              <p class="targets-note">A Viva entende texto livre: “comi 2 ovos e um pão”.</p>
+              <div style="display:grid;gap:8px;margin-top:12px">
+                <button class="btn btn-primary btn-block" type="button" data-focus-chat>Anotar refeição</button>
+                <button class="btn btn-subtle btn-block" type="button" data-chat-prompt="O que posso jantar?">Pedir sugestão</button>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section id="view-atividades" class="view" data-view-panel="atividades" hidden>
+        <div class="greet"><span class="eyebrow">Atividades</span><h1>Seu movimento.</h1></div>
+        <div class="cols">
+          <div class="stack">
+            <article class="card">
+              <header class="card-head"><h2>Últimos 7 dias</h2><span class="sub" id="activity-week-total">0 min</span></header>
+              <div class="week-bars" id="activity-week" role="img" aria-label="Minutos de atividade nos últimos 7 dias"></div>
+            </article>
             <article class="card" aria-labelledby="activity-title">
-              <header class="card-head"><h2 id="activity-title">Movimento</h2><span class="sub" id="activity-total">0 kcal</span></header>
+              <header class="card-head"><h2 id="activity-title">Atividades de hoje</h2><span class="sub" id="activity-total">0 kcal</span></header>
               <ul class="list" id="activity-list"></ul>
+            </article>
+          </div>
+          <div class="stack">
+            <article class="card">
+              <header class="card-head"><h2>Registrar atividade</h2></header>
+              <p class="targets-note">Diga à Viva o tipo e a duração: “corri 30 min”, “caminhei 20 min” ou “musculação 40 min”.</p>
+              <button class="btn btn-primary btn-block" type="button" data-chat-prompt="corri " style="margin-top:12px">Registrar no assistente</button>
             </article>
           </div>
         </div>
       </section>
       <section id="view-diario" class="view" data-view-panel="diario" hidden>
-        <div class="greet"><span class="eyebrow">Últimos 14 dias</span><h1>Seu diário.</h1></div>
+        <div class="greet"><span class="eyebrow">Evolução</span><h1>Como você está indo.</h1></div>
         <div class="stats">
           <div class="stat"><strong id="diary-avg">—</strong><span>média kcal</span></div>
           <div class="stat"><strong id="diary-days">—</strong><span>dias com registro</span></div>
@@ -626,9 +687,11 @@ img,svg{display:block}
       </section>
     </main>
     <nav class="tabbar" aria-label="Navegação principal">
-      <button class="tab" type="button" data-view="hoje" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9h13v-9"/><path d="M10 19v-5h4v5"/></svg><span>Hoje</span></button>
-      <button class="tab" type="button" data-view="diario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Diário</span></button>
-      <button class="tab" type="button" data-view="viva"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H7l-4 2 1.4-4.2A8 8 0 1 1 21 12Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg><span>Viva</span></button>
+      <button class="tab" type="button" data-view="hoje" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9h13v-9"/><path d="M10 19v-5h4v5"/></svg><span>Início</span></button>
+      <button class="tab" type="button" data-view="viva"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H7l-4 2 1.4-4.2A8 8 0 1 1 21 12Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg><span>Assistente</span></button>
+      <button class="tab" type="button" data-view="alimentacao"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a2 2 0 0 0 4 0V3M8 10v11"/><path d="M17 3c-1.6 2-2.5 4.4-2.5 7 0 2 1 3.5 2.5 4v7"/></svg><span>Refeições</span></button>
+      <button class="tab" type="button" data-view="atividades"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="m7 21 3-6 3 2 2 4"/><path d="m9 13 4-4 3 3 3 1"/></svg><span>Atividades</span></button>
+      <button class="tab" type="button" data-view="diario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 4-5 3 3 5-7"/></svg><span>Evolução</span></button>
       <button class="tab" type="button" data-view="perfil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg><span>Perfil</span></button>
     </nav>
   </div>

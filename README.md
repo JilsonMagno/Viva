@@ -16,10 +16,23 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 - Instalável no celular (tela inicial), com casca em cache.
 - Base de 83 alimentos com valores por 100 g, fonte e referência por item (TACO 4ª ed. e USDA FoodData Central).
 
+## Layout
+
+Seis abas, iguais às do app original (`viva-app.zip`) e do protótipo `Viva.html`:
+
+- **Início**: resumo de kcal e macros, atalhos, água, peso e hábitos da semana.
+- **Assistente**: conversa e registro por texto.
+- **Alimentação** (rótulo curto **Refeições** no celular): refeições agrupadas por café da manhã, almoço, lanche e jantar, com resumo do dia e sugestão.
+- **Atividades**: minutos dos últimos 7 dias, atividades de hoje e registro pelo assistente.
+- **Evolução**: últimos 14 dias, médias e histórico de peso.
+- **Perfil**: metas, IA BYOK, exportação e exclusão.
+
+Os IDs internos antigos (`hoje`, `viva`, `diario`) foram mantidos para não quebrar links diretos; os rótulos visíveis são os seis acima.
+
 Testes:
 - `node tests/rls.test.mjs`: 11 verificações da migração e das regras de acesso, em Postgres real (PGlite), incluindo um usuário anônimo.
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
-- `node tests/e2e.test.mjs`: 21 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA com chave do próprio usuário (BYOK), exportação, exclusão, logout, isolamento entre contas, links diretos, PWA, acessibilidade, falha de rede e layout em 390 px.
+- `node tests/e2e.test.mjs`: 21 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA com chave do próprio usuário (BYOK), exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as três suítes.
 
 ## O que depende da sua conta (não consigo criar por você)

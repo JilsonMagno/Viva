@@ -474,7 +474,7 @@
   }
 
   function setView(view) {
-    const names = ["hoje", "diario", "viva", "perfil"];
+    const names = ["hoje", "viva", "alimentacao", "atividades", "diario", "perfil"];
     currentView = names.includes(view) ? view : "hoje";
     localStorage.setItem(LS_VIEW, currentView);
     for (const panel of $$("[data-view-panel]")) panel.hidden = panel.dataset.viewPanel !== currentView;
@@ -486,7 +486,7 @@
     if (currentView === "diario") renderDiary();
     if (currentView === "perfil") renderProfile();
     if (currentView === "viva") renderChat();
-    if (currentView === "hoje") renderToday();
+    if (currentView === "hoje" || currentView === "alimentacao" || currentView === "atividades") renderToday();
   }
 
   async function logout() {
@@ -1255,20 +1255,35 @@
     if (!meals.length) {
       mealList.append(emptyBlock("Nada anotado ainda.", "Diga à Viva: “comi 2 ovos e um pão”."));
     } else {
-      for (const meal of [...meals].reverse()) {
-        mealList.append(h(
-          "div",
-          { class: "row", dataset: { mealId: meal.id } },
-          h("span", { class: "r-ico", "aria-hidden": "true" }, icon(MEAL_ICON[meal.label] || "bowl")),
-          h("div", { class: "r-main" },
-            h("strong", {}, meal.items.map((item) => item.name).join(" + ")),
-            h("small", {}, `${meal.label} · ${fmtTime(meal.at)} · ${meal.items.map((item) => `${nf(item.grams)} g`).join(", ")}`)
-          ),
-          h("span", { class: "r-kcal" }, `${nf(meal.kcal)} kcal`),
-          h("button", { class: "r-del", type: "button", "data-del-meal": meal.id, "aria-label": `Remover ${meal.label}` }, "✕")
-        ));
+      const order = ["Café da manhã", "Almoço", "Lanche", "Jantar"];
+      const labels = [...new Set([...order, ...meals.map((meal) => meal.label)])];
+      for (const label of labels) {
+        const group = meals.filter((meal) => meal.label === label);
+        if (!group.length) continue;
+        const groupKcal = group.reduce((acc, meal) => acc + (Number(meal.kcal) || 0), 0);
+        const section = h("section", { class: "meal-group" }, h("h3", {}, `${label} · ${nf(groupKcal)} kcal`));
+        for (const meal of [...group].reverse()) {
+          section.append(h(
+            "div",
+            { class: "row", dataset: { mealId: meal.id } },
+            h("span", { class: "r-ico", "aria-hidden": "true" }, icon(MEAL_ICON[meal.label] || "bowl")),
+            h("div", { class: "r-main" },
+              h("strong", {}, meal.items.map((item) => item.name).join(" + ")),
+              h("small", {}, `${meal.label} · ${fmtTime(meal.at)} · ${meal.items.map((item) => `${nf(item.grams)} g`).join(", ")}`)
+            ),
+            h("span", { class: "r-kcal" }, `${nf(meal.kcal)} kcal`),
+            h("button", { class: "r-del", type: "button", "data-del-meal": meal.id, "aria-label": `Remover ${meal.label}` }, "✕")
+          ));
+        }
+        mealList.append(section);
       }
     }
+    const mealTotal = $("#meal-total");
+    if (mealTotal) mealTotal.textContent = `${nf(consumed)} kcal`;
+    const mealSummary = $("#meal-summary");
+    if (mealSummary) mealSummary.textContent = meals.length
+      ? `${nf(consumed)} de ${nf(budget)} kcal · ${nf(burned)} kcal em movimento`
+      : "Nenhuma refeição anotada ainda.";
 
     const water = Number(dayData().waterMl) || 0;
     const waterTarget = target.waterMl || 2000;
@@ -1317,6 +1332,64 @@
       }
     }
     $("#activity-total").textContent = `${nf(burned)} kcal`;
+    renderHabits();
+    renderActivityWeek();
+  }
+
+  function renderHabits() {
+    const host = $("#habit-days");
+    if (!host || !state) return;
+    host.innerHTML = "";
+    const letters = ["D", "S", "T", "Q", "Q", "S", "S"];
+    let streak = 0;
+    for (let i = 0; i < 84; i += 1) {
+      const data = state.days[ymd(addDays(new Date(), -i))];
+      if (data && (data.meals.length || data.waterMl > 0 || data.activities.length)) streak += 1;
+      else break;
+    }
+    for (let i = 6; i >= 0; i -= 1) {
+      const date = addDays(new Date(), -i);
+      const data = state.days[ymd(date)];
+      const level = data
+        ? Math.min(3, (data.meals.length ? 1 : 0) + (data.waterMl > 0 ? 1 : 0) + (data.activities.length ? 1 : 0))
+        : 0;
+      host.append(h(
+        "div",
+        { class: "habit-day" },
+        h("i", { class: `habit-dot l${level}`, title: fmtDay(date) }),
+        h("span", {}, letters[date.getDay()])
+      ));
+    }
+    const label = $("#habit-streak");
+    if (label) label.textContent = streak ? `${streak} dia${streak > 1 ? "s" : ""} no ritmo` : "Comece hoje";
+  }
+
+  function renderActivityWeek() {
+    const host = $("#activity-week");
+    if (!host || !state) return;
+    host.innerHTML = "";
+    const rows = [];
+    let max = 30;
+    let total = 0;
+    for (let i = 6; i >= 0; i -= 1) {
+      const date = addDays(new Date(), -i);
+      const data = state.days[ymd(date)];
+      const minutes = (data?.activities || []).reduce((acc, activity) => acc + (Number(activity.minutes) || 0), 0);
+      total += minutes;
+      max = Math.max(max, minutes);
+      rows.push({ date, minutes });
+    }
+    for (const row of rows) {
+      host.append(h(
+        "div",
+        { class: "week-bar" },
+        h("b", {}, row.minutes ? String(row.minutes) : ""),
+        h("div", { class: "week-track" }, h("i", { style: `height:${Math.max(4, (row.minutes / max) * 100)}%` })),
+        h("span", {}, row.date.toLocaleDateString("pt-BR", { weekday: "narrow" }))
+      ));
+    }
+    const label = $("#activity-week-total");
+    if (label) label.textContent = `${nf(total)} min`;
   }
 
   function renderDiary() {
@@ -1641,6 +1714,15 @@
         $("#chat-input").focus();
       });
     }
+    for (const button of $$("[data-chat-prompt]")) {
+      button.addEventListener("click", () => {
+        setView("viva");
+        const input = $("#chat-input");
+        input.value = button.dataset.chatPrompt || "";
+        input.focus();
+        autoGrow();
+      });
+    }
     $("#chat-form").addEventListener("submit", (event) => {
       event.preventDefault();
       sendChat($("#chat-input").value);
@@ -1692,7 +1774,7 @@
     }
 
     const hash = location.hash.replace("#", "");
-    currentView = ["hoje", "diario", "viva", "perfil"].includes(hash)
+    currentView = ["hoje", "viva", "alimentacao", "atividades", "diario", "perfil"].includes(hash)
       ? hash
       : localStorage.getItem(LS_VIEW) || "hoje";
 

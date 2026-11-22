@@ -296,7 +296,7 @@ await check("6. atividade por texto é calculada e pode ser removida", async () 
   await waitMain(page);
   await send(page, "corri 30 min");
   await waitChat(page, "Corrida por 30 min");
-  await goView(page, "hoje");
+  await goView(page, "atividades");
   const row = await waitFor(async () => {
     const current = await rowFor(USER_A.id);
     return current && current.data.days[today()]?.activities?.length === 1 ? current : null;
@@ -488,24 +488,27 @@ await check("13. contas diferentes não misturam dados na interface", async () =
   await page.close();
 });
 
-await check("14. links diretos (#diario, #viva) abrem a aba certa", async () => {
+await check("14. links diretos das 6 abas abrem a tela certa", async () => {
   await resetAll();
   await seed(demoState());
   const page = await newPage();
   await login(page, "A");
   await waitMain(page);
-  await page.evaluate(() => { location.hash = "#diario"; });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitMain(page);
-  await page.waitForFunction(() => !document.getElementById("view-diario").hidden, { timeout: 5000 });
-  equal(await page.$eval('.tab[data-view="diario"]', (el) => el.getAttribute("aria-current")), "page", "aba Diário ativa");
-  await page.evaluate(() => { location.hash = "#viva"; });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitMain(page);
+  for (const view of ["diario", "viva", "alimentacao", "atividades"]) {
+    await page.evaluate((hash) => { location.hash = `#${hash}`; }, view);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await waitMain(page);
+    await page.waitForFunction((name) => !document.getElementById(`view-${name}`).hidden, { timeout: 5000 }, view);
+    equal(await page.$eval(`.tab[data-view="${view}"]`, (el) => el.getAttribute("aria-current")), "page", `aba ${view} ativa`);
+  }
+  await goView(page, "alimentacao");
+  await page.click("#view-alimentacao [data-chat-prompt]");
   await page.waitForFunction(() => !document.getElementById("view-viva").hidden, { timeout: 5000 });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitMain(page);
+  equal(await page.$eval("#chat-input", (el) => el.value), "O que posso jantar?", "sugestão preenche o chat");
+  await goView(page, "atividades");
+  await page.click("#view-atividades [data-chat-prompt]");
   await page.waitForFunction(() => !document.getElementById("view-viva").hidden, { timeout: 5000 });
+  equal(await page.$eval("#chat-input", (el) => el.value), "corri ", "registro preenche o chat");
   await page.close();
 });
 
@@ -542,6 +545,9 @@ await check("16. interface mobile não vaza na horizontal e tem nomes acessívei
   await login(page, "A");
   await waitMain(page);
   await goView(page, "hoje");
+  const tabs = await page.$$eval(".tab", (els) => els.map((el) => el.dataset.view));
+  equal(tabs.length, 6, "6 abas no celular");
+  equal(tabs.join(","), "hoje,viva,alimentacao,atividades,diario,perfil", "ordem das 6 abas");
   const audit = await page.evaluate(() => {
     const nameless = [...document.querySelectorAll("button")].filter((button) =>
       !(button.textContent.trim() || button.getAttribute("aria-label") || button.getAttribute("title"))
@@ -565,6 +571,11 @@ await check("16. interface mobile não vaza na horizontal e tem nomes acessívei
   equal(audit.lang, "pt-BR", "idioma do documento");
   assert(audit.viewport.includes("width=device-width"), "viewport mobile");
   assert(audit.manifest, "link do manifest");
+  for (const view of ["hoje", "viva", "alimentacao", "atividades", "diario", "perfil"]) {
+    await goView(page, view);
+    const width = await page.evaluate(() => document.documentElement.scrollWidth);
+    assert(width <= 390, `${view} vaza na horizontal: ${width}`);
+  }
   await page.close();
 });
 
