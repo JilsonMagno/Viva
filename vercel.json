@@ -1,0 +1,12 @@
+{
+  "buildCommand": "node build.cjs && mkdir -p public && cp index.html config.js manifest.webmanifest sw.js icon.svg icon-192.png icon-512.png public/",
+  "outputDirectory": "public",
+  "installCommand": "echo no-install",
+  "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    }
+  ]
+}
