@@ -6,12 +6,13 @@
   const KEY = String(CFG.SUPABASE_ANON_KEY || "");
   const FN = CFG.AI_FUNCTION || "assistente";
   const AI_ENDPOINT = String(CFG.AI_ENDPOINT || "");
+  let AI_SERVER = null;
   const AI_STORE = "viva.aiKey.v1";
   const AI_PROVIDERS = {
-    openai: { label: "OpenAI", model: "gpt-4o-mini" },
-    groq: { label: "Groq", model: "llama-3.3-70b-versatile" },
-    gemini: { label: "Google Gemini", model: "gemini-2.0-flash" },
-    openrouter: { label: "OpenRouter", model: "meta-llama/llama-3.3-70b-instruct:free" }
+    openrouter: { label: "OpenRouter (grátis)", model: "openrouter/free", vision: true },
+    openai: { label: "OpenAI", model: "gpt-4o-mini", vision: true },
+    groq: { label: "Groq", model: "openai/gpt-oss-120b", vision: false },
+    gemini: { label: "Google Gemini", model: "gemini-3.5-flash-lite", vision: true }
   };
   const LS_SESSION = "viva.session.v2";
   const LS_PKCE = "viva.pkce.v2";
@@ -102,6 +103,8 @@
 
   // Mifflin-St Jeor com a média das constantes masculina (+5) e feminina (-161).
   const ACTIVITY = 1.5;
+  const GOAL_LABELS = { lose: "Perder peso", maintain: "Manter o peso", gain: "Ganhar massa" };
+  const CONFIDENCE_LABELS = { baixa: "baixa", media: "média", alta: "alta" };
   const GOAL_DELTA = { lose: -400, maintain: 0, gain: 300 };
   const PROTEIN_PER_KG = { lose: 1.6, maintain: 1.3, gain: 1.8 };
   const FAT_RATIO = 0.27;
@@ -471,6 +474,7 @@
     show("screen-main");
     setView(currentView || localStorage.getItem(LS_VIEW) || "hoje");
     renderAll();
+    loadAIServerConfig();
   }
 
   function setView(view) {
@@ -557,8 +561,9 @@
     const button = $("#onb-submit");
     button.disabled = true;
     button.textContent = "Salvando…";
+    await loadAIServerConfig();
     state = emptyState();
-    state.profile = { ...profile, aiEnabled: false, onboardedAt: nowIso() };
+    state.profile = { ...profile, aiEnabled: !!(AI_SERVER || loadAIKey()), onboardedAt: nowIso() };
     state.targets = calcTargets(profile);
     state.weights = [{ date: ymd(), kg: profile.weightKg }];
     const ok = await saveNow();
@@ -583,7 +588,8 @@
       weightKg: parseNum($("#pf-weight").value),
       goal: $("#pf-goal").value
     };
-    profile.aiEnabled = $("#pf-ai").checked && (!AI_ENDPOINT || !!loadAIKey());
+    if (AI_ENDPOINT && !AI_SERVER && !loadAIKey()) await loadAIServerConfig();
+    profile.aiEnabled = $("#pf-ai").checked && (!AI_ENDPOINT || !!AI_SERVER || !!loadAIKey());
     const errors = validateProfile(profile);
     markFields(errors, { age: "pf-age", height: "pf-height", weight: "pf-weight" });
     const errorBox = $("#profile-error");
@@ -904,16 +910,23 @@
   }
 
   const ACTIVITIES = [
-    { re: /corri|corrida|correr/, name: "Corrida", met: 9.8 },
-    { re: /caminhei|caminhada|caminhar|andei/, name: "Caminhada", met: 3.5 },
-    { re: /pedalei|bicicleta|ciclismo|bike/, name: "Bicicleta", met: 7.5 },
-    { re: /nadei|natacao|nadar/, name: "Natação", met: 8.0 },
-    { re: /musculacao|academia|treino de forca|pesos/, name: "Musculação", met: 6.0 },
-    { re: /yoga/, name: "Yoga", met: 3.0 },
-    { re: /pilates/, name: "Pilates", met: 3.0 },
-    { re: /futebol/, name: "Futebol", met: 7.0 },
-    { re: /dancei|danca/, name: "Dança", met: 5.0 }
+    { re: /corri|corrida|correr/, name: "Corrida", met: 9.8, mets: [7, 9.8, 12] },
+    { re: /caminhei|caminhada|caminhar|andei/, name: "Caminhada", met: 3.5, mets: [3, 3.5, 5] },
+    { re: /pedalei|bicicleta|ciclismo|bike/, name: "Bicicleta", met: 7.5, mets: [5.5, 7.5, 10] },
+    { re: /nadei|natacao|nadar/, name: "Natação", met: 8.0, mets: [5, 8, 9.5] },
+    { re: /musculacao|academia|treino de forca|pesos/, name: "Musculação", met: 6.0, mets: [3.5, 6, 7.5] },
+    { re: /yoga/, name: "Yoga", met: 3.0, mets: [2, 3, 3.5] },
+    { re: /pilates/, name: "Pilates", met: 3.0, mets: [2, 3, 3.5] },
+    { re: /futebol/, name: "Futebol", met: 7.0, mets: [5, 7, 9] },
+    { re: /dancei|danca/, name: "Dança", met: 5.0, mets: [3.5, 5, 7] }
   ];
+
+  const INTENSITY = ["Leve", "Moderada", "Intensa"];
+  const SIM = { activity: 1, intensity: 1, minutes: 30 };
+  const PHOTO = { dataUrl: "", items: [], total: 0, state: "idle" };
+  let photoBusy = false;
+  const PHOTO_MAX_BYTES = 12 * 1024 * 1024;
+  const PHOTO_MAX_SIDE = 1280;
 
   function parseActivity(text) {
     const norm = normalize(text);
@@ -936,6 +949,53 @@
     };
   }
 
+  function simulatedActivity() {
+    const activity = ACTIVITIES[SIM.activity] || ACTIVITIES[0];
+    const mets = activity.mets || [activity.met, activity.met, activity.met];
+    const met = mets[SIM.intensity] || activity.met;
+    const kg = latestWeight() || Number(state?.profile?.weightKg) || 70;
+    return { activity, met, kg, kcal: (met * 3.5 * kg * SIM.minutes) / 200 };
+  }
+
+  function renderActivitySimulator() {
+    const select = $("#sim-activity");
+    if (!select || !state) return;
+    if (!select.options.length) {
+      select.innerHTML = ACTIVITIES.map((activity, index) => `<option value="${index}">${activity.name}</option>`).join("");
+    }
+    SIM.activity = clamp(SIM.activity, 0, ACTIVITIES.length - 1);
+    SIM.intensity = clamp(SIM.intensity, 0, 2);
+    SIM.minutes = clamp(SIM.minutes, 5, 180);
+    select.value = String(SIM.activity);
+    const intensity = $("#sim-intensity");
+    if (intensity) intensity.value = String(SIM.intensity);
+    const range = $("#sim-minutes");
+    if (range) {
+      range.value = String(SIM.minutes);
+      range.setAttribute("aria-valuetext", `${SIM.minutes} minutos`);
+    }
+    const minutesLabel = $("#sim-minutes-label");
+    if (minutesLabel) minutesLabel.textContent = `${SIM.minutes} min`;
+    const { met, kg, kcal } = simulatedActivity();
+    const estimate = $("#sim-kcal");
+    if (estimate) estimate.textContent = `≈ ${nf(round(kcal))} kcal`;
+    const detail = $("#sim-detail");
+    if (detail) detail.textContent = `Peso usado: ${nf1(kg)} kg · MET ${nf1(met)} · ${nf1(kcal / SIM.minutes)} kcal/min. Metade do gasto entra no orçamento de hoje.`;
+  }
+
+  function addSimulatedActivity() {
+    if (!state) return;
+    const { activity, met, kcal } = simulatedActivity();
+    addActivity({
+      name: activity.name,
+      minutes: SIM.minutes,
+      met,
+      kcal,
+      intensity: INTENSITY[SIM.intensity] || "Moderada"
+    });
+    toast(`${activity.name} registrada: ${SIM.minutes} min, ≈ ${nf(round(kcal))} kcal.`);
+  }
+
   function isQuestion(text) {
     const raw = String(text || "").trim();
     if (raw.endsWith("?")) return true;
@@ -954,7 +1014,7 @@
     try {
       const raw = JSON.parse(localStorage.getItem(aiStoreKey()) || "null");
       if (!raw || typeof raw.key !== "string" || !raw.key) return null;
-      const provider = AI_PROVIDERS[raw.provider] ? raw.provider : "openai";
+      const provider = AI_PROVIDERS[raw.provider] ? raw.provider : "openrouter";
       return { provider, model: typeof raw.model === "string" ? raw.model : "", key: raw.key };
     } catch {
       return null;
@@ -969,30 +1029,91 @@
     localStorage.removeItem(aiStoreKey());
   }
 
-  async function askAI(question) {
+  function activeAIConfig() {
+    const own = loadAIKey();
+    if (own) {
+      return {
+        provider: own.provider,
+        model: own.model || AI_PROVIDERS[own.provider]?.model || "",
+        key: own.key,
+        source: "own",
+        vision: !!AI_PROVIDERS[own.provider]?.vision
+      };
+    }
+    if (AI_SERVER) {
+      return { ...AI_SERVER, source: "server", vision: !!AI_SERVER.vision };
+    }
+    return null;
+  }
+
+  function hasVisionAI() {
+    return !!activeAIConfig()?.vision;
+  }
+
+  async function loadAIServerConfig() {
+    if (!AI_ENDPOINT) return null;
+    try {
+      const res = await fetch(AI_ENDPOINT, { headers: { Accept: "application/json" } });
+      if (!res.ok) return AI_SERVER;
+      const data = await res.json().catch(() => null);
+      AI_SERVER = data?.configured
+        ? { provider: data.provider || "openai", model: data.model || "", vision: !!data.vision }
+        : null;
+    } catch {
+      return AI_SERVER;
+    }
+    if (AI_ENDPOINT && !AI_SERVER && !loadAIKey() && state?.profile?.aiEnabled) {
+      state.profile.aiEnabled = false;
+      queueSave();
+      renderChat();
+    }
+    if (state) renderAISettings();
+    return AI_SERVER;
+  }
+
+  async function askAI(question, options = {}) {
     if (!navigator.onLine) return "Você está offline. Tente de novo quando a conexão voltar.";
 
     if (AI_ENDPOINT) {
-      const ai = loadAIKey();
-      if (!ai) return "Configure sua chave de IA em Perfil para usar perguntas abertas.";
+      let config = activeAIConfig();
+      if (!config) {
+        await loadAIServerConfig();
+        config = activeAIConfig();
+      }
+      if (!config) {
+        return "A IA do app ainda não foi configurada. Enquanto isso, posso responder sobre proteína, calorias, água e sugestão de jantar.";
+      }
+      if (options.image && !config.vision) {
+        return config.source === "own"
+          ? `Sua chave do ${AI_PROVIDERS[config.provider]?.label || config.provider} não analisa fotos. Use OpenAI, Gemini ou OpenRouter, ou remova a chave para usar a IA do app.`
+          : "A IA incluída no app não analisa fotos. Use uma chave própria da OpenAI, Gemini ou OpenRouter.";
+      }
       try {
         const session = await ensureSession();
         if (!session) {
           sessionLost();
           return "Sua sessão expirou. Entre de novo.";
         }
+        const provider = config.provider || "openai";
+        const model = config.model || "";
+        const payload = { question, message: question, context: {}, provider, model };
+        if (config.source === "own") payload.apiKey = config.key;
+        if (options.image) payload.image = options.image;
         const res = await fetch(AI_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-          body: JSON.stringify({ question, message: question, context: {}, provider: ai.provider, model: ai.model, apiKey: ai.key })
+          body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => null);
         if (res.status === 401) {
-          if (data?.error === "provider_error") return "Sua chave de IA foi recusada. Confira em Perfil.";
+          if (data?.error === "provider_error") return "A IA do app foi recusada. Tente de novo em instantes.";
           sessionLost();
           return "Sua sessão expirou. Entre de novo.";
         }
-        if (res.status === 400 && data?.error === "missing_api_key") return "Configure sua chave de IA em Perfil.";
+        if (res.status === 503 && data?.error === "ai_not_configured") {
+          return "A IA do app ainda não foi configurada. Enquanto isso, posso responder sobre proteína, calorias, água e sugestão de jantar.";
+        }
+        if (res.status === 400 && data?.error === "missing_api_key") return "A IA do app não tem chave configurada. Use as respostas locais ou salve uma chave em Perfil.";
         if (res.status === 429) return "Muitas perguntas em pouco tempo. Espere um minuto e tente de novo.";
         if (!res.ok) {
           if (data?.error === "provider_error" && data?.message) return `A IA recusou: ${data.message}`;
@@ -1025,12 +1146,88 @@
     }
   }
 
+  const DINNERS = [
+    { name: "Frango grelhado com arroz e brócolis", items: [["frango-peito", 1.5], ["arroz-branco", 1], ["brocolis", 1]] },
+    { name: "Omelete de ovos com salada", items: [["ovo-cozido", 3], ["salada", 1.5], ["azeite", 1]] },
+    { name: "Tilápia com batata-doce e salada", items: [["tilapia", 1.5], ["batata-doce", 1.5], ["salada", 1]] },
+    { name: "Carne bovina com arroz e feijão", items: [["patinho", 1.2], ["arroz-branco", 1], ["feijao-carioca", 1]] },
+    { name: "Iogurte com aveia e banana", items: [["iogurte", 1], ["aveia", 1], ["banana", 1]] },
+    { name: "Pão integral com queijo minas e tomate", items: [["pao-integral", 2], ["queijo-minas", 1], ["tomate", 1]] }
+  ];
+
+  function dishTotals(dish) {
+    return dish.items.reduce((acc, [id, qty]) => {
+      const food = FOODS.find((item) => item.id === id);
+      if (!food) return acc;
+      const factor = (Number(qty) * Number(food.portion)) / 100;
+      acc.kcal += Number(food.kcal) * factor;
+      acc.p += Number(food.p) * factor;
+      acc.c += Number(food.c) * factor;
+      acc.f += Number(food.f) * factor;
+      return acc;
+    }, { kcal: 0, p: 0, c: 0, f: 0 });
+  }
+
+  function localAnswer(norm) {
+    if (!state) return null;
+    const totals = dayTotals();
+    const target = state.targets || calcTargets(state.profile);
+    const budget = target.kcal + Math.round(totals.burned * 0.5);
+    const leftKcal = budget - totals.kcal;
+    const proteinLeft = Math.max(0, target.protein - totals.protein);
+    const day = dayData();
+    const waterTarget = target.waterMl || 2000;
+    const water = Number(day.waterMl) || 0;
+    const waterPct = Math.round((water / waterTarget) * 100);
+    const minutes = day.activities.reduce((acc, activity) => acc + (Number(activity.minutes) || 0), 0);
+
+    if (/(dor|doendo|febre|tontura|cansad|exausto|fraqueza)/.test(norm)) {
+      return "Se a dor for forte, persistente ou vier com outros sintomas, procure um profissional de saúde. Posso ajudar com alimentação, água e movimento, mas não faço diagnóstico.";
+    }
+    if (/(jantar|sugestao|sugere|sugerir|ideia|o que posso comer)/.test(norm)) {
+      const best = DINNERS
+        .map((dish) => ({ ...dish, ...dishTotals(dish) }))
+        .map((dish) => ({
+          ...dish,
+          score: Math.abs(dish.p - proteinLeft) + (dish.kcal > leftKcal ? (dish.kcal - leftKcal) / 5 : 0)
+        }))
+        .sort((a, b) => a.score - b.score)[0];
+      return `Sugestão de jantar: ${best.name} (~${nf(best.kcal)} kcal, ${nf(best.p)} g de proteína). Faltam ${nf(proteinLeft)} g de proteína e ${nf(Math.max(0, leftKcal))} kcal no seu dia.`;
+    }
+    if (/(proteina|protein)/.test(norm)) {
+      if (proteinLeft <= 0) return `Você já bateu a meta de proteína hoje: ${nf(totals.protein)} de ${nf(target.protein)} g.`;
+      return `Faltam ${nf(proteinLeft)} g de proteína hoje. Você consumiu ${nf(totals.protein)} de ${nf(target.protein)} g.`;
+    }
+    if (/(agua|hidrat)/.test(norm)) {
+      return `Água: ${nf(water)} de ${nf(waterTarget)} ml (${waterPct}%).`;
+    }
+    if (/(caloria|kcal|quanto falta|quanto posso)/.test(norm)) {
+      return leftKcal >= 0
+        ? `Você consumiu ${nf(totals.kcal)} kcal de ${nf(budget)}. Restam ${nf(leftKcal)} kcal hoje.`
+        : `Você consumiu ${nf(totals.kcal)} kcal de ${nf(budget)}. Passou ${nf(-leftKcal)} kcal da meta.`;
+    }
+    if (/(como estou|resumo|meu dia|como foi)/.test(norm)) {
+      return `Hoje: ${nf(totals.kcal)} de ${nf(budget)} kcal, ${nf(totals.protein)} de ${nf(target.protein)} g de proteína, ${nf(water)} de ${nf(waterTarget)} ml de água e ${nf(minutes)} min de atividade.`;
+    }
+    if (/^(oi|ola|bom dia|boa tarde|boa noite)\b/.test(norm)) {
+      return `Oi${state.profile.name ? `, ${state.profile.name}` : ""}! Posso anotar refeições, água, atividade e peso. Também respondo quanto falta de proteína, calorias, água e uma sugestão de jantar.`;
+    }
+    return null;
+  }
+
   async function handleMessage(text) {
     const norm = normalize(text);
     const question = isQuestion(text);
     if (question && !RECORDING.test(norm)) {
-      if (!state.profile.aiEnabled) return "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso anotar refeições, água, atividade e peso.";
-      return askAI(text);
+      const local = localAnswer(norm);
+      if (!state.profile.aiEnabled) {
+        return local || "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso responder sobre proteína, calorias, água, resumo e sugestão de jantar.";
+      }
+      const answer = await askAI(text);
+      if (local && /(Não consegui falar|não foi configurada|não está configurada|Configure sua chave|offline|Muitas perguntas|A IA recusou)/i.test(answer)) {
+        return `${local} (A IA não respondeu agora; resposta local.)`;
+      }
+      return answer;
     }
     const water = parseWater(text);
     if (water) {
@@ -1057,7 +1254,7 @@
       const saved = addMeal(meal.items, meal.label);
       const list = saved.items.map((item) => `${item.name} (${nf(item.kcal)} kcal)`).join(", ");
       const totals = dayTotals();
-      const left = (state.targets?.kcal || 0) - totals.kcal + totals.burned;
+      const left = (state.targets?.kcal || 0) - totals.kcal + Math.round(totals.burned * 0.5);
       return `Anotei no ${meal.label.toLowerCase()}: ${list}. Total da refeição: ${nf(saved.kcal)} kcal. Restam ${nf(left)} kcal hoje.`;
     }
     if (question) {
@@ -1098,11 +1295,15 @@
     for (const message of messages) log.append(messageNode(message));
     log.scrollTop = log.scrollHeight;
     const ai = !!state.profile.aiEnabled;
-    $("#ai-status").textContent = ai ? "IA ligada — perguntas abertas" : "IA desligada — anotações funcionam";
+    const config = activeAIConfig();
+    const label = AI_PROVIDERS[config?.provider]?.label || "a IA";
+    $("#ai-status").textContent = ai
+      ? (config?.source === "own" ? "IA ligada — sua chave" : "IA ligada — incluída no app")
+      : "IA desligada — anotações e respostas locais";
     $("#ai-dot").dataset.on = String(ai);
     $("#chat-note").textContent = ai
-      ? "Só o texto da sua pergunta vai para a OpenAI. Seus registros ficam no Supabase."
-      : "Seus registros de refeição, água, atividade e peso não são enviados à OpenAI.";
+      ? `Só o texto da sua pergunta e, quando você enviar, a foto do prato vão para ${label}. Seus registros ficam no Supabase.`
+      : "Seus registros de refeição, água, atividade e peso não são enviados a provedores de IA.";
   }
 
   async function sendChat(text) {
@@ -1221,8 +1422,9 @@
     const target = state.targets || calcTargets(state.profile);
     const consumed = round(totals.kcal);
     const burned = round(totals.burned);
-    const budget = target.kcal + burned;
-    const remaining = target.kcal - consumed + burned;
+    const burnedCredit = Math.round(totals.burned * 0.5);
+    const budget = target.kcal + burnedCredit;
+    const remaining = target.kcal - consumed + burnedCredit;
     const pct = clamp((consumed / Math.max(1, budget)) * 100, 0, 100);
 
     const ring = $("#kcal-ring");
@@ -1324,7 +1526,7 @@
           h("span", { class: "r-ico", "aria-hidden": "true" }, icon("run")),
           h("div", { class: "r-main" },
             h("strong", {}, activity.name),
-            h("small", {}, `${activity.minutes} min · MET ${nf1(activity.met)}`)
+            h("small", {}, `${activity.minutes} min${activity.intensity ? ` · ${activity.intensity}` : ""} · MET ${nf1(activity.met)}`)
           ),
           h("span", { class: "r-kcal" }, `${nf(activity.kcal)} kcal`),
           h("button", { class: "r-del", type: "button", "data-del-activity": activity.id, "aria-label": `Remover ${activity.name}` }, "✕")
@@ -1332,6 +1534,7 @@
       }
     }
     $("#activity-total").textContent = `${nf(burned)} kcal`;
+    renderActivitySimulator();
     renderHabits();
     renderActivityWeek();
   }
@@ -1390,6 +1593,157 @@
     }
     const label = $("#activity-week-total");
     if (label) label.textContent = `${nf(total)} min`;
+  }
+
+  function dashboardHasData(data) {
+    return !!(data && ((data.meals && data.meals.length) || Number(data.waterMl) > 0 || (data.activities && data.activities.length)));
+  }
+
+  function dashboardKeys() {
+    return Object.keys(state?.days || {}).filter((key) => dashboardHasData(state.days[key])).sort().reverse();
+  }
+
+  function dashboardRange(keys) {
+    const days = keys
+      .map((key) => ({ key, data: state.days[key] }))
+      .filter((item) => dashboardHasData(item.data))
+      .map((item) => ({ ...item, totals: dayTotals(item.key) }));
+    const mealDays = days.filter((item) => item.data.meals.length);
+    const waterDays = days.filter((item) => Number(item.data.waterMl) > 0);
+    return {
+      recorded: days.length,
+      avgKcal: mealDays.length ? round(mealDays.reduce((sum, item) => sum + item.totals.kcal, 0) / mealDays.length) : 0,
+      avgWater: waterDays.length ? round(waterDays.reduce((sum, item) => sum + Number(item.data.waterMl), 0) / waterDays.length) : 0,
+      activityMin: days.reduce((sum, item) => sum + (item.data.activities || []).reduce((acc, act) => acc + Number(act.minutes || 0), 0), 0),
+      activityKcal: days.reduce((sum, item) => sum + item.totals.burned, 0)
+    };
+  }
+
+  function dashboardWeightDelta(keys) {
+    const allowed = new Set(keys);
+    const list = (state.weights || []).filter((item) => allowed.has(item.date));
+    if (list.length < 2) return null;
+    return Number(list[list.length - 1].kg) - Number(list[0].kg);
+  }
+
+  function dashboardList(rows) {
+    const list = h("dl", { class: "dash-list" });
+    for (const [label, value] of rows) {
+      list.append(h("dt", {}, label), h("dd", {}, value));
+    }
+    return list;
+  }
+
+  function dashboardBlock(title, content) {
+    return h("section", { class: "dash-block" }, h("h3", {}, title), content);
+  }
+
+  function renderDashboard() {
+    const root = $("#dashboard-body");
+    if (!root || !state) return;
+    root.innerHTML = "";
+    const target = state.targets || calcTargets(state.profile);
+    const profile = state.profile || {};
+    const latest = latestWeight();
+    const imc = bmi(latest, profile.heightCm);
+    const today = dayTotals();
+    const todayData = dayData();
+    const remaining = target.kcal - today.kcal + Math.round(today.burned * 0.5);
+    const keys = dashboardKeys();
+    const recentKeys = keys.slice(0, 30);
+    const last7 = dashboardRange(Array.from({ length: 7 }, (_, index) => ymd(addDays(new Date(), -index))));
+    const last14 = dashboardRange(Array.from({ length: 14 }, (_, index) => ymd(addDays(new Date(), -index))));
+    const weight7 = dashboardWeightDelta(Array.from({ length: 7 }, (_, index) => ymd(addDays(new Date(), -index))));
+    const weight14 = dashboardWeightDelta(Array.from({ length: 14 }, (_, index) => ymd(addDays(new Date(), -index))));
+
+    const grid = h("div", { class: "dash-grid" },
+      dashboardBlock("Perfil", dashboardList([
+        ["Nome", profile.name || "Você"],
+        ["Idade", profile.age ? `${profile.age} anos` : "—"],
+        ["Altura", profile.heightCm ? `${nf1(profile.heightCm)} cm` : "—"],
+        ["Peso atual", latest ? `${nf1(latest)} kg` : "—"],
+        ["IMC", imc ? nf1(imc) : "—"],
+        ["Objetivo", GOAL_LABELS[profile.goal] || "—"],
+        ["Conta", user?.email || "Visitante"]
+      ])),
+      dashboardBlock("Metas", dashboardList([
+        ["Calorias", `${nf(target.kcal)} kcal`],
+        ["Proteína", `${nf(target.protein)} g`],
+        ["Carboidratos", `${nf(target.carbs)} g`],
+        ["Gordura", `${nf(target.fat)} g`],
+        ["Água", `${nf1(target.waterMl / 1000)} L`]
+      ])),
+      dashboardBlock("Hoje", dashboardList([
+        ["Consumido", `${nf(today.kcal)} kcal`],
+        ["Gasto em atividade", `${nf(today.burned)} kcal`],
+        [remaining >= 0 ? "Restante" : "Acima da meta", `${nf(Math.abs(remaining))} kcal`],
+        ["Água", `${nf(todayData.waterMl)} ml`],
+        ["Refeições", String(todayData.meals.length)],
+        ["Atividade", `${nf((todayData.activities || []).reduce((sum, act) => sum + Number(act.minutes || 0), 0))} min`]
+      ])),
+      dashboardBlock("Últimos 7 dias", dashboardList([
+        ["Média de kcal", last7.avgKcal ? `${nf(last7.avgKcal)} kcal` : "—"],
+        ["Dias com registro", String(last7.recorded)],
+        ["Água média", last7.avgWater ? `${nf(last7.avgWater)} ml` : "—"],
+        ["Atividade", `${nf(last7.activityMin)} min`],
+        ["Gasto em atividade", `${nf(last7.activityKcal)} kcal`],
+        ["Variação de peso", weight7 == null ? "—" : `${weight7 > 0 ? "+" : ""}${nf1(weight7)} kg`]
+      ]))
+    );
+
+    const weightBlock = dashboardBlock("Peso", dashboardList([
+      ["Último peso", latest ? `${nf1(latest)} kg` : "—"],
+      ["Variação em 7 dias", weight7 == null ? "—" : `${weight7 > 0 ? "+" : ""}${nf1(weight7)} kg`],
+      ["Variação em 14 dias", weight14 == null ? "—" : `${weight14 > 0 ? "+" : ""}${nf1(weight14)} kg`],
+      ["Registros", String((state.weights || []).length)]
+    ]));
+
+    const foodCounts = new Map();
+    for (const key of recentKeys) {
+      for (const meal of state.days[key].meals || []) {
+        for (const item of meal.items || []) {
+          const name = String(item.name || "").trim();
+          if (name) foodCounts.set(name, (foodCounts.get(name) || 0) + 1);
+        }
+      }
+    }
+    const topFoods = [...foodCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const foodsBlock = dashboardBlock("Alimentos mais registrados", topFoods.length
+      ? h("ol", { class: "dash-food-list" }, topFoods.map(([name, count]) => h("li", {}, h("span", {}, name), h("strong", {}, `${count}x`))))
+      : h("p", { class: "targets-note" }, "Sem refeições registradas ainda."));
+
+    const summary = h("div", { class: "dash-grid" }, weightBlock, foodsBlock);
+
+    const table = h("table", { class: "dash-table" },
+      h("thead", {}, h("tr", {},
+        h("th", {}, "Dia"),
+        h("th", {}, "kcal"),
+        h("th", {}, "água"),
+        h("th", {}, "atividade"),
+        h("th", {}, "peso")
+      ))
+    );
+    const body = h("tbody");
+    const weightByDate = new Map((state.weights || []).map((item) => [item.date, item.kg]));
+    for (const key of recentKeys) {
+      const data = state.days[key];
+      const totals = dayTotals(key);
+      const activityMinutes = (data.activities || []).reduce((sum, act) => sum + Number(act.minutes || 0), 0);
+      const weight = weightByDate.get(key);
+      body.append(h("tr", {},
+        h("td", {}, fmtDay(parseYmd(key))),
+        h("td", {}, `${nf(totals.kcal)}`),
+        h("td", {}, `${nf(data.waterMl)} ml`),
+        h("td", {}, `${nf(activityMinutes)} min`),
+        h("td", {}, weight ? `${nf1(weight)} kg` : "—")
+      ));
+    }
+    table.append(body);
+
+    root.append(grid, summary,
+      h("p", { class: "targets-note" }, `Últimos 14 dias: ${last14.recorded} dia(s) com registro, média de ${last14.avgKcal ? `${nf(last14.avgKcal)} kcal` : "—"} e ${nf(last14.activityMin)} min de atividade.`),
+      dashboardBlock("Histórico recente", recentKeys.length ? table : h("p", { class: "targets-note" }, "Ainda não há dados para montar o histórico."))
+    );
   }
 
   function renderDiary() {
@@ -1457,34 +1811,68 @@
         ));
       }
     }
+    renderDashboard();
   }
 
   function renderAISettings() {
-    const provider = $("#ai-provider");
-    if (!provider) return;
-    const ai = loadAIKey();
-    const current = ai?.provider || "openai";
-    provider.value = current;
-    const model = $("#ai-model");
-    if (model) {
-      model.value = ai?.model || "";
-      model.placeholder = `padrão: ${AI_PROVIDERS[current]?.model || ""}`;
+    const card = $("#ai-card");
+    if (!card) return;
+    card.hidden = false;
+    const own = loadAIKey();
+    const available = !AI_ENDPOINT || !!(AI_SERVER || own);
+    const provider = own?.provider || AI_SERVER?.provider || "openrouter";
+    const providerLabel = AI_PROVIDERS[provider]?.label || provider;
+    const source = $("#ai-source");
+    if (source) source.textContent = own ? "Minha chave" : (AI_SERVER || !AI_ENDPOINT) ? "Incluída no app" : "Sem IA";
+    const serverStatus = $("#ai-server-status");
+    if (serverStatus) {
+      serverStatus.hidden = false;
+      serverStatus.textContent = AI_SERVER
+        ? `IA incluída no app (${providerLabel})${AI_SERVER.vision ? " · aceita fotos" : " · sem fotos"}. Você não precisa colar chave.`
+        : !AI_ENDPOINT
+          ? "IA via função do Supabase. Nenhuma chave necessária."
+          : "A IA do app não está configurada. Você pode usar sua própria chave abaixo.";
     }
-    const key = $("#ai-key");
-    if (key) {
-      key.value = "";
-      key.placeholder = ai ? "Chave salva. Cole outra para substituir." : "Cole sua chave";
+    const switchNote = $("#ai-switch-note");
+    if (switchNote) {
+      switchNote.textContent = own
+        ? `Usando ${providerLabel} com a sua chave.`
+        : (AI_SERVER || !AI_ENDPOINT)
+          ? (state?.profile?.aiEnabled
+              ? "Usando a IA incluída no app. Nenhuma chave necessária."
+              : "Disponível. Toque para ligar as perguntas abertas.")
+          : "Adicione uma chave para liberar perguntas abertas.";
     }
-    const status = $("#ai-key-status");
-    if (status) status.textContent = ai
-      ? `Chave salva neste navegador (${AI_PROVIDERS[current]?.label || current}).`
-      : "Nenhuma chave salva. A IA fica desligada.";
-    const clear = $("#btn-ai-clear");
-    if (clear) clear.hidden = !ai;
+    const toggle = $("#pf-ai");
+    if (toggle) {
+      toggle.disabled = !available;
+      toggle.checked = available && !!state?.profile?.aiEnabled;
+    }
+    const providerSelect = $("#ai-provider");
+    if (providerSelect) providerSelect.value = provider;
+    const modelInput = $("#ai-model");
+    if (modelInput) {
+      modelInput.value = own?.model || "";
+      modelInput.placeholder = `padrão: ${AI_PROVIDERS[provider]?.model || ""}`;
+    }
+    const keyInput = $("#ai-key");
+    if (keyInput) {
+      keyInput.value = "";
+      keyInput.placeholder = own ? "Chave salva — cole outra para trocar" : "Cole sua chave (opcional)";
+    }
+    const clearButton = $("#btn-ai-clear");
+    if (clearButton) clearButton.hidden = !own;
+    const keyStatus = $("#ai-key-status");
+    if (keyStatus) {
+      keyStatus.textContent = own
+        ? `Chave salva neste navegador (${providerLabel}${own.model ? ` · ${own.model}` : ""}).`
+        : "Nenhuma chave própria. A IA incluída no app será usada quando disponível.";
+    }
+    updatePhotoAvailability();
   }
 
   function saveAISettings() {
-    const provider = $("#ai-provider")?.value || "openai";
+    const provider = $("#ai-provider")?.value || "openrouter";
     const model = ($("#ai-model")?.value || "").trim();
     const key = ($("#ai-key")?.value || "").trim();
     const existing = loadAIKey();
@@ -1497,19 +1885,236 @@
       return;
     }
     saveAIKey({ provider, model, key: key || existing.key });
+    if (state?.profile) {
+      state.profile.aiEnabled = true;
+      queueSave();
+    }
     renderAISettings();
+    renderChat();
     toast("Chave salva só neste navegador.");
   }
 
   function clearAISettings() {
     clearAIKey();
-    if (state?.profile) state.profile.aiEnabled = false;
+    if (state?.profile) state.profile.aiEnabled = !!AI_SERVER;
     const toggle = $("#pf-ai");
-    if (toggle) toggle.checked = false;
+    if (toggle) toggle.checked = !!state?.profile?.aiEnabled;
     if (state) queueSave();
     renderChat();
     renderAISettings();
-    toast("Chave removida. IA desligada.");
+    toast(AI_SERVER ? "Chave própria removida. A IA do app continua disponível." : "Chave removida. IA desligada.");
+  }
+
+  function updatePhotoAvailability() {
+    const status = $("#photo-status");
+    const analyze = $("#photo-analyze");
+    const note = $("#photo-note");
+    if (!status) return;
+    const config = activeAIConfig();
+    if (!config) {
+      status.textContent = "IA não configurada";
+      if (analyze) analyze.disabled = true;
+      if (note) note.textContent = "Para calcular por foto, adicione uma chave de IA em Perfil ou configure a IA do app.";
+      return;
+    }
+    if (!config.vision) {
+      status.textContent = "Provedor sem fotos";
+      if (analyze) analyze.disabled = true;
+      if (note) note.textContent = `O ${AI_PROVIDERS[config.provider]?.label || config.provider} não analisa imagens. Use OpenAI, Gemini ou OpenRouter.`;
+      return;
+    }
+    if (analyze) analyze.disabled = !PHOTO.dataUrl || photoBusy;
+    status.textContent = photoBusy
+      ? "Analisando…"
+      : !PHOTO.dataUrl
+        ? "Aguardando foto"
+        : PHOTO.state === "ok"
+          ? "Estimativa pronta"
+          : PHOTO.state === "error"
+            ? "Sem estimativa"
+            : "Foto pronta";
+    if (note) note.textContent = "A foto é enviada ao provedor de IA e não é salva no Supabase.";
+  }
+
+  function loadPhotoElement(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+      image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não consegui abrir esta imagem.")); };
+      image.src = url;
+    });
+  }
+
+  async function preparePhoto(file) {
+    if (!file || !String(file.type).startsWith("image/")) throw new Error("Escolha uma foto.");
+    if (file.size > PHOTO_MAX_BYTES) throw new Error("A foto é grande demais. Use uma imagem de até 12 MB.");
+    const image = await loadPhotoElement(file);
+    const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Seu navegador não conseguiu preparar a foto.");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.82);
+  }
+
+  async function handlePhotoFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await preparePhoto(file);
+      PHOTO.dataUrl = dataUrl;
+      PHOTO.items = [];
+      PHOTO.total = 0;
+      PHOTO.state = "idle";
+      const preview = $("#photo-preview");
+      if (preview) preview.src = dataUrl;
+      const wrap = $("#photo-preview-wrap");
+      if (wrap) wrap.hidden = false;
+      const result = $("#photo-result");
+      if (result) result.innerHTML = "";
+      const add = $("#photo-add");
+      if (add) add.hidden = true;
+      updatePhotoAvailability();
+    } catch (error) {
+      toast(error.message || "Não consegui abrir a foto.");
+      resetPhoto();
+    }
+  }
+
+  function resetPhoto() {
+    PHOTO.dataUrl = "";
+    PHOTO.items = [];
+    PHOTO.total = 0;
+    PHOTO.state = "idle";
+    photoBusy = false;
+    const input = $("#photo-input");
+    if (input) input.value = "";
+    const preview = $("#photo-preview");
+    if (preview) preview.removeAttribute("src");
+    const wrap = $("#photo-preview-wrap");
+    if (wrap) wrap.hidden = true;
+    const result = $("#photo-result");
+    if (result) result.innerHTML = "";
+    const add = $("#photo-add");
+    if (add) add.hidden = true;
+    const button = $("#photo-analyze");
+    if (button) button.textContent = "Analisar foto";
+    updatePhotoAvailability();
+  }
+
+  function parseDishAnswer(answer) {
+    const text = String(answer || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end <= start) return null;
+    let data;
+    try {
+      data = JSON.parse(text.slice(start, end + 1));
+    } catch {
+      return null;
+    }
+    const raw = Array.isArray(data.items) ? data.items.slice(0, 10) : [];
+    const items = raw.map((item) => {
+      const name = String(item?.name || "").trim().slice(0, 80);
+      const grams = parseNum(item?.grams);
+      const kcal = parseNum(item?.kcal);
+      if (!name || !(grams > 0) || !(kcal > 0)) return null;
+      return {
+        name,
+        grams: round(clamp(grams, 1, 2000)),
+        kcal: round(clamp(kcal, 1, 5000)),
+        protein: +clamp(parseNum(item?.protein ?? item?.p) || 0, 0, 500).toFixed(1),
+        carbs: +clamp(parseNum(item?.carbs ?? item?.c) || 0, 0, 500).toFixed(1),
+        fat: +clamp(parseNum(item?.fat ?? item?.f) || 0, 0, 500).toFixed(1)
+      };
+    }).filter(Boolean);
+    if (!items.length) return null;
+    const confidence = ["baixa", "media", "alta"].includes(String(data.confidence || "").toLowerCase())
+      ? String(data.confidence).toLowerCase()
+      : "media";
+    return {
+      items,
+      total: round(items.reduce((sum, item) => sum + item.kcal, 0)),
+      confidence,
+      note: String(data.note || "").trim().slice(0, 240)
+    };
+  }
+
+  function renderDishResult(parsed) {
+    const result = $("#photo-result");
+    if (!result) return;
+    result.innerHTML = "";
+    const total = h("div", { class: "photo-total" },
+      h("strong", {}, `≈ ${nf(parsed.total)} kcal`),
+      h("span", { class: "sub" }, `${parsed.items.length} ${parsed.items.length === 1 ? "item" : "itens"}`)
+    );
+    const list = h("ul", { class: "photo-items" });
+    for (const item of parsed.items) {
+      list.append(h("li", {},
+        h("span", {}, item.name),
+        h("span", {}, `${nf(item.grams)} g · ${nf(item.kcal)} kcal`)
+      ));
+    }
+    result.append(total, list);
+    if (parsed.note) result.append(h("p", { class: "targets-note" }, `Confiança ${CONFIDENCE_LABELS[parsed.confidence] || parsed.confidence}. ${parsed.note}`));
+    const add = $("#photo-add");
+    if (add) {
+      add.hidden = false;
+      add.textContent = `Adicionar ao ${detectMealLabel("").toLowerCase()}`;
+    }
+  }
+
+  async function analyzeDishPhoto() {
+    if (!PHOTO.dataUrl || photoBusy) return;
+    photoBusy = true;
+    updatePhotoAvailability();
+    const button = $("#photo-analyze");
+    if (button) button.textContent = "Analisando…";
+    const result = $("#photo-result");
+    if (result) result.innerHTML = "";
+    const add = $("#photo-add");
+    if (add) add.hidden = true;
+    try {
+      const answer = await askAI("Analise a foto do prato e estime os alimentos, as porções e as calorias.", { image: PHOTO.dataUrl });
+      const parsed = parseDishAnswer(answer);
+      if (parsed) {
+        PHOTO.items = parsed.items;
+        PHOTO.total = parsed.total;
+        PHOTO.state = "ok";
+        renderDishResult(parsed);
+      } else {
+        PHOTO.items = [];
+        PHOTO.total = 0;
+        PHOTO.state = "error";
+        if (result) result.textContent = answer || "Não consegui estimar esta foto. Tente outra foto ou registre pelo texto.";
+      }
+    } catch {
+      PHOTO.state = "error";
+      if (result) result.textContent = "Não consegui analisar agora. Verifique a conexão e tente de novo.";
+    } finally {
+      photoBusy = false;
+      if (button) button.textContent = "Analisar foto";
+      updatePhotoAvailability();
+    }
+  }
+
+  function addPhotoMeal() {
+    if (!PHOTO.items.length) return;
+    const label = detectMealLabel("");
+    const items = PHOTO.items.map((item) => ({
+      name: item.name,
+      grams: item.grams,
+      kcal: item.kcal,
+      p: item.protein,
+      c: item.carbs,
+      f: item.fat
+    }));
+    const saved = addMeal(items, label);
+    toast(`${label}: ${nf(saved.kcal)} kcal adicionadas.`);
+    resetPhoto();
   }
 
   function renderProfile() {
@@ -1626,22 +2231,26 @@
     toast("Atividade removida.");
   }
 
-  function toggleAI() {
+  async function toggleAI() {
     const on = $("#pf-ai").checked;
-    if (AI_ENDPOINT && on && !loadAIKey()) {
+    if (AI_ENDPOINT && on && !AI_SERVER && !loadAIKey()) await loadAIServerConfig();
+    const config = activeAIConfig();
+    if (on && AI_ENDPOINT && !config) {
       $("#pf-ai").checked = false;
       state.profile.aiEnabled = false;
       queueSave();
       renderChat();
       renderAISettings();
-      toast("Salve sua chave de IA antes de ligar.");
+      toast("Adicione sua chave ou use a IA incluída no app. Enquanto isso, as respostas locais continuam.");
       return;
     }
     state.profile.aiEnabled = on;
     queueSave();
     renderChat();
     renderAISettings();
-    toast(on ? "IA ligada. Cada pergunta usa a sua chave." : "IA desligada.");
+    toast(on
+      ? (config?.source === "own" ? "IA ligada. Cada pergunta usa a sua chave." : "IA ligada. Nenhuma chave necessária.")
+      : "IA desligada.");
   }
 
   function updateOnline() {
@@ -1743,6 +2352,28 @@
       const button = event.target.closest("[data-del-activity]");
       if (button) removeActivity(button.dataset.delActivity);
     });
+    const simActivity = $("#sim-activity");
+    if (simActivity) simActivity.addEventListener("change", () => {
+      SIM.activity = Number(simActivity.value) || 0;
+      renderActivitySimulator();
+    });
+    const simIntensity = $("#sim-intensity");
+    if (simIntensity) simIntensity.addEventListener("change", () => {
+      SIM.intensity = Number(simIntensity.value) || 0;
+      renderActivitySimulator();
+    });
+    const simMinutes = $("#sim-minutes");
+    if (simMinutes) simMinutes.addEventListener("input", () => {
+      SIM.minutes = Number(simMinutes.value) || 30;
+      renderActivitySimulator();
+    });
+    const simAdd = $("#sim-add");
+    if (simAdd) simAdd.addEventListener("click", addSimulatedActivity);
+    $("#photo-input")?.addEventListener("change", handlePhotoFile);
+    $("#photo-analyze")?.addEventListener("click", analyzeDishPhoto);
+    $("#photo-clear")?.addEventListener("click", resetPhoto);
+    $("#photo-add")?.addEventListener("click", addPhotoMeal);
+    $("#btn-dashboard-print")?.addEventListener("click", () => window.print());
     window.addEventListener("online", updateOnline);
     window.addEventListener("offline", updateOnline);
     window.addEventListener("beforeinstallprompt", (event) => {

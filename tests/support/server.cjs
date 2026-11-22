@@ -45,7 +45,16 @@ const state = {
   aiBodies: [],
   aiMode: "ok",
   aiAnswer: "Uma dieta equilibrada combina variedade, regularidade e água ao longo do dia.",
+  aiVisionAnswer: JSON.stringify({
+    items: [
+      { name: "Arroz branco", grams: 120, kcal: 154, protein: 3, carbs: 33.7, fat: 0.2 },
+      { name: "Feijão", grams: 100, kcal: 76, protein: 4.8, carbs: 13.6, fat: 0.5 }
+    ],
+    confidence: "media",
+    note: "Estimativa visual de teste."
+  }),
   aiEndpoint: "",
+  aiServer: null,
   lastAI: null,
   authorizeMode: "redirect"
 };
@@ -64,7 +73,16 @@ function reset() {
   state.aiBodies = [];
   state.aiMode = "ok";
   state.aiAnswer = "Uma dieta equilibrada combina variedade, regularidade e água ao longo do dia.";
+  state.aiVisionAnswer = JSON.stringify({
+    items: [
+      { name: "Arroz branco", grams: 120, kcal: 154, protein: 3, carbs: 33.7, fat: 0.2 },
+      { name: "Feijão", grams: 100, kcal: 76, protein: 4.8, carbs: 13.6, fat: 0.5 }
+    ],
+    confidence: "media",
+    note: "Estimativa visual de teste."
+  });
   state.aiEndpoint = "";
+  state.aiServer = null;
   state.lastAI = null;
   state.authorizeMode = "redirect";
 }
@@ -171,10 +189,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === "/api/ai" && req.method === "GET") {
+    json(res, state.aiServer || { configured: false });
+    return;
+  }
+
   if (pathname === "/api/ai" && req.method === "POST") {
     const body = (await readJson(req)) || {};
-    state.lastAI = { provider: body.provider, model: body.model, apiKey: body.apiKey, question: body.question };
-    json(res, { answer: "Resposta BYOK de teste." });
+    state.lastAI = {
+      provider: body.provider,
+      model: body.model,
+      apiKey: body.apiKey,
+      question: body.question,
+      hasImage: !!body.image,
+      imagePrefix: body.image ? String(body.image).slice(0, 30) : ""
+    };
+    json(res, { answer: body.image ? state.aiVisionAnswer : (state.aiServer ? "Resposta do servidor de teste." : "Resposta BYOK de teste.") });
     return;
   }
 
@@ -190,6 +220,7 @@ const server = http.createServer(async (req, res) => {
     if (body.aiMode) state.aiMode = body.aiMode;
     if (typeof body.aiAnswer === "string") state.aiAnswer = body.aiAnswer;
     if (typeof body.aiEndpoint === "string") state.aiEndpoint = body.aiEndpoint;
+    if ("aiServer" in body) state.aiServer = body.aiServer;
     json(res, { ok: true });
     return;
   }

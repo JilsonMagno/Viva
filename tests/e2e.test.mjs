@@ -10,6 +10,11 @@ const { server, reset, USER_A, USER_B } = require("./support/server.cjs");
 const PORT = 12001;
 const BASE = `http://127.0.0.1:${PORT}`;
 const pageErrors = [];
+const dishPng = "/tmp/viva-dish-test.png";
+fs.writeFileSync(
+  dishPng,
+  Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z4p8AAAAASUVORK5CYII=", "base64")
+);
 
 let passed = 0;
 let failed = 0;
@@ -312,6 +317,24 @@ await check("6. atividade por texto é calculada e pode ser removida", async () 
     return current && current.data.days[today()].activities.length === 0;
   });
   assert((await textOf(page, "#activity-list")).includes("Sem atividade hoje"), "atividade não foi removida");
+  await page.select("#sim-activity", "0");
+  await page.select("#sim-intensity", "1");
+  await page.$eval("#sim-minutes", (el) => {
+    el.value = "45";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await waitFor(async () => (await textOf(page, "#sim-kcal")).includes("kcal"));
+  assert((await textOf(page, "#sim-detail")).includes("75 kg"), "simulador deveria usar o peso mais recente");
+  await page.click("#sim-add");
+  const simulated = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    const list = current?.data.days[today()]?.activities || [];
+    return list.length === 1 && list[0].name === "Corrida" ? current : null;
+  });
+  const simulatedActivity = simulated.data.days[today()].activities[0];
+  equal(simulatedActivity.minutes, 45, "minutos do simulador");
+  equal(simulatedActivity.intensity, "Moderada", "intensidade do simulador");
+  assert((await textOf(page, "#activity-list")).includes("45 min"), "lista deveria mostrar a atividade simulada");
   await page.close();
 });
 
@@ -377,6 +400,12 @@ await check("9. IA desligada e falha da IA não quebram o app", async () => {
   await send(page, "o que é uma dieta equilibrada?");
   await waitChat(page, "A IA está desligada");
   equal((await getState()).aiCalls, 0, "não deveria chamar a IA desligada");
+  await send(page, "quanto falta de proteína?");
+  await waitChat(page, "Faltam 119 g de proteína");
+  equal((await getState()).aiCalls, 0, "resposta local não deveria chamar a IA");
+  await send(page, "o que posso jantar?");
+  await waitChat(page, "Sugestão de jantar");
+  equal((await getState()).aiCalls, 0, "sugestão local não deveria chamar a IA");
   await page.close();
 
   await resetAll();
@@ -650,7 +679,7 @@ await check("19. login visitante entra e cria dados no Supabase", async () => {
   await context.close();
 });
 
-await check("20. IA usa a chave do próprio usuário e não a salva no Supabase", async () => {
+await check("20. Perfil aceita chave própria opcional e o assistente local responde sem chave", async () => {
   await resetAll();
   const base = demoState();
   await seed(demoState({ profile: { ...base.profile, aiEnabled: false } }));
@@ -659,37 +688,118 @@ await check("20. IA usa a chave do próprio usuário e não a salva no Supabase"
   await login(page, "A");
   await waitMain(page);
   await goView(page, "perfil");
-  await page.select("#ai-provider", "groq");
-  await page.type("#ai-model", "llama-test");
-  await page.type("#ai-key", "gsk_test_123");
+  await page.waitForFunction(() => !document.getElementById("ai-card").hidden, { timeout: 5000 });
+  assert((await textOf(page, "#ai-server-status")).includes("não está configurada"), "status sem IA do app");
+  equal(await page.$eval("#ai-provider", (element) => element.value), "openrouter", "OpenRouter gratuito como padrão");
+  assert(await page.$eval("#pf-ai", (element) => element.disabled), "switch deve ficar desligado sem chave");
+  await send(page, "quanto falta de proteína?");
+  await waitChat(page, "Faltam 119 g de proteína");
+  equal((await getState()).aiCalls, 0, "não deveria chamar IA");
+  await goView(page, "perfil");
+  await page.select("#ai-provider", "openai");
+  await page.type("#ai-key", "sk-test-own");
   await page.click("#btn-ai-save");
-  await page.waitForFunction(() => document.getElementById("ai-key-status").textContent.includes("Chave salva"), { timeout: 5000 });
-  const stored = await page.evaluate(() => {
-    const session = JSON.parse(localStorage.getItem("viva.session.v2"));
-    return JSON.parse(localStorage.getItem("viva.aiKey.v1:" + session.user.id));
-  });
-  equal(stored.provider, "groq", "provedor salvo");
-  equal(stored.key, "gsk_test_123", "chave salva no navegador");
-  await page.evaluate(() => document.getElementById("pf-ai").click());
+  await page.waitForFunction(() => !document.getElementById("pf-ai").disabled, { timeout: 5000 });
+  assert((await textOf(page, "#ai-key-status")).includes("Chave salva"), "status da chave própria");
+  assert(await page.$eval("#pf-ai", (element) => element.checked), "salvar a chave deve ligar a IA");
   await send(page, "qual a melhor fruta?");
   await waitChat(page, "Resposta BYOK de teste.");
-  const state = await getState();
-  equal(state.lastAI.provider, "groq", "provedor enviado ao proxy");
-  equal(state.lastAI.model, "llama-test", "modelo enviado ao proxy");
-  equal(state.lastAI.apiKey, "gsk_test_123", "chave enviada ao proxy");
-  const row = await waitFor(async () => {
-    const current = await rowFor(USER_A.id);
-    return current && JSON.stringify(current.data).includes("Resposta BYOK de teste.") ? current : null;
-  });
-  assert(!JSON.stringify(row.data).includes("gsk_test_123"), "chave não deve ir para o Supabase");
+  const byok = await getState();
+  equal(byok.lastAI.provider, "openai", "provedor da chave própria");
+  equal(byok.lastAI.apiKey, "sk-test-own", "chave própria enviada ao proxy");
   await goView(page, "perfil");
   await page.click("#btn-ai-clear");
-  assert(await page.$eval("#pf-ai", (element) => !element.checked), "IA deve desligar ao remover a chave");
+  await page.waitForFunction(() => document.getElementById("pf-ai").disabled, { timeout: 5000 });
   await page.close();
   await setConfig({ aiEndpoint: "" });
 });
 
-await check("21. nenhuma exceção de página durante os testes", async () => {
+await check("21. IA do servidor e foto do prato usam a chave do servidor", async () => {
+  await resetAll();
+  const base = demoState();
+  await seed(demoState({ profile: { ...base.profile, aiEnabled: true } }));
+  await setConfig({
+    aiEndpoint: "/api/ai",
+    aiServer: { configured: true, provider: "openai", model: "gpt-4o-mini", vision: true }
+  });
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await goView(page, "perfil");
+  await page.waitForFunction(() => document.getElementById("ai-server-status").textContent.includes("IA incluída"), { timeout: 5000 });
+  assert((await textOf(page, "#ai-server-status")).includes("IA incluída"), "status da IA do app");
+  assert(!(await page.$eval("#ai-settings", (element) => element.hidden)), "campo opcional de chave deve ficar visível");
+  assert(await page.$eval("#pf-ai", (element) => element.checked), "preferência de IA deve sobreviver ao carregamento da configuração");
+  await send(page, "qual a melhor fruta?");
+  await waitChat(page, "Resposta do servidor de teste.");
+  const state = await getState();
+  equal(state.lastAI.provider, "openai", "provedor do servidor");
+  equal(state.lastAI.model, "gpt-4o-mini", "modelo do servidor");
+  equal(state.lastAI.apiKey, undefined, "não deve pedir chave ao usuário");
+
+  await goView(page, "alimentacao");
+  await page.waitForFunction(() => document.getElementById("photo-status").textContent.includes("Aguardando"), { timeout: 5000 });
+  const input = await page.$("#photo-input");
+  await input.uploadFile(dishPng);
+  await page.waitForFunction(() => !document.getElementById("photo-preview-wrap").hidden, { timeout: 5000 });
+  await page.waitForFunction(() => !document.getElementById("photo-analyze").disabled, { timeout: 5000 });
+  await page.click("#photo-analyze");
+  await page.waitForFunction(() => document.getElementById("photo-result").innerText.includes("Arroz branco"), { timeout: 5000 });
+  assert((await textOf(page, "#photo-result")).includes("230 kcal"), "total estimado pela foto");
+  assert(!(await page.$eval("#photo-add", (element) => element.hidden)), "botão de adicionar deve aparecer");
+  const photoCall = await getState();
+  assert(photoCall.lastAI.hasImage, "a foto deveria chegar ao proxy");
+  assert(photoCall.lastAI.imagePrefix.startsWith("data:image/jpeg;base64,"), "foto comprimida em JPEG");
+  await page.$eval("#photo-add", (element) => element.click());
+  const withPhotoMeal = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    const meals = current?.data.days[today()]?.meals || [];
+    return meals.length === 1 ? current : null;
+  });
+  equal(withPhotoMeal.data.days[today()].meals[0].kcal, 230, "kcal da refeição por foto");
+  equal(withPhotoMeal.data.days[today()].meals[0].items.length, 2, "itens da refeição por foto");
+  await page.close();
+  await setConfig({ aiEndpoint: "", aiServer: null });
+});
+
+await check("22. dashboard reúne perfil, metas, hoje, histórico e impressão", async () => {
+  await resetAll();
+  const base = demoState();
+  const key = today();
+  const day = {
+    meals: [{
+      id: "meal-dash",
+      at: new Date().toISOString(),
+      label: "Almoço",
+      items: [{ name: "Arroz", grams: 100, kcal: 130, p: 2, c: 28, f: 0 }],
+      kcal: 130,
+      p: 2,
+      c: 28,
+      f: 0
+    }],
+    waterMl: 500,
+    activities: [{ id: "act-dash", at: new Date().toISOString(), name: "Caminhada", minutes: 30, kcal: 100, intensity: "Leve" }]
+  };
+  await seed(demoState({ days: { [key]: day } }));
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await goView(page, "diario");
+  await page.waitForFunction(() => document.getElementById("dashboard-body").innerText.toLowerCase().includes("histórico recente"), { timeout: 5000 });
+  const body = await textOf(page, "#dashboard-body");
+  assert(body.includes("Ana"), "perfil no dashboard");
+  assert(body.includes("1.970 kcal"), "metas no dashboard");
+  assert(body.includes("500 ml"), "água de hoje no dashboard");
+  assert(body.includes("Caminhada") || body.includes("30 min"), "atividade no dashboard");
+  assert(body.includes("Arroz"), "alimentos no dashboard");
+  assert(body.toLowerCase().includes("histórico recente"), "histórico no dashboard");
+  await page.evaluate(() => { window.__printed = false; window.print = () => { window.__printed = true; }; });
+  await page.click("#btn-dashboard-print");
+  assert(await page.evaluate(() => window.__printed), "botão deveria chamar impressão");
+  await page.close();
+});
+
+await check("23. nenhuma exceção de página durante os testes", async () => {
   assert(pageErrors.length === 0, pageErrors.join(" | "));
 });
 
