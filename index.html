@@ -266,6 +266,25 @@ img,svg{display:block}
 .row .r-kcal{font-size:.84rem;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .row .r-del{border:0;background:none;color:var(--muted);padding:6px;border-radius:8px;line-height:0}
 .row .r-del:hover{color:var(--danger);background:var(--surface-2)}
+.row .r-edit{border:0;background:none;color:var(--muted);padding:6px;border-radius:8px;line-height:1;font-size:.95rem}
+.row .r-edit:hover{color:var(--green-2);background:var(--surface-2)}
+.meal-edit{margin:2px 0 14px;padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--surface-2);display:grid;gap:10px}
+.meal-edit-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.meal-edit-head strong{font-size:.9rem}
+.meal-edit-head .sub{font-size:.72rem;color:var(--muted)}
+.meal-edit-list{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+.meal-edit-item{padding-bottom:9px;border-bottom:1px solid var(--line);display:grid;gap:6px}
+.meal-edit-item:last-child{border-bottom:0;padding-bottom:0}
+.e-top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.e-name{font-size:.86rem;font-weight:650;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.e-kcal{font-size:.74rem;color:var(--muted);white-space:nowrap}
+.e-controls{display:flex;align-items:center;gap:10px}
+.e-qty{display:flex;align-items:center;gap:6px;font-size:.76rem;color:var(--muted);font-weight:650}
+.e-qty input{width:82px;min-height:38px;padding:6px 9px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;font-size:.86rem;font-variant-numeric:tabular-nums}
+.e-del{margin-left:auto;border:1px solid rgba(168,50,50,.28);background:transparent;color:var(--danger);border-radius:9px;padding:7px 10px;font-size:.76rem;font-weight:700}
+.e-del:hover{background:rgba(168,50,50,.08)}
+.meal-edit-actions{display:flex;gap:8px;flex-wrap:wrap}
+.meal-edit-actions .btn{flex:1;min-width:120px}
 .workout-intensity{font-size:.74rem;font-weight:700;color:var(--muted);white-space:nowrap;flex:none}
 .budget-result{display:grid;gap:12px;margin-top:14px}
 .budget-summary{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line)}
@@ -1048,6 +1067,7 @@ img,svg{display:block}
   let dirty = false;
   let chatBusy = false;
   let deleteArmed = 0;
+  let editingMealId = null;
   let installPrompt = null;
   const waterUndo = [];
 
@@ -2857,6 +2877,125 @@ img,svg{display:block}
     }
   }
 
+  function scaleMealItem(item, grams) {
+    const next = Math.max(0, round(Number(grams) || 0));
+    const old = Number(item.grams) || 0;
+    const ratio = old > 0 ? next / old : 0;
+    return {
+      ...item,
+      grams: next,
+      kcal: +(Number(item.kcal || 0) * ratio).toFixed(1),
+      p: +(Number(item.p || 0) * ratio).toFixed(1),
+      c: +(Number(item.c || 0) * ratio).toFixed(1),
+      f: +(Number(item.f || 0) * ratio).toFixed(1)
+    };
+  }
+
+  function recalcMeal(meal) {
+    const totals = meal.items.reduce((acc, item) => ({
+      kcal: acc.kcal + Number(item.kcal || 0),
+      p: acc.p + Number(item.p || 0),
+      c: acc.c + Number(item.c || 0),
+      f: acc.f + Number(item.f || 0)
+    }), { kcal: 0, p: 0, c: 0, f: 0 });
+    meal.kcal = round(totals.kcal);
+    meal.p = +totals.p.toFixed(1);
+    meal.c = +totals.c.toFixed(1);
+    meal.f = +totals.f.toFixed(1);
+  }
+
+  function readMealItems(form, meal) {
+    const inputs = $$("[data-meal-item-grams]", form);
+    return meal.items.map((item, index) => {
+      const value = parseNum(inputs[index]?.value);
+      return scaleMealItem(item, Number.isFinite(value) ? value : item.grams);
+    });
+  }
+
+  function saveMealEdit(meal, form) {
+    const items = readMealItems(form, meal).filter((item) => item.grams > 0);
+    if (!items.length) {
+      removeMeal(meal.id);
+      editingMealId = null;
+      return;
+    }
+    meal.items = items;
+    recalcMeal(meal);
+    editingMealId = null;
+    queueSave();
+    renderToday();
+    renderDiary();
+    toast("Quantidades atualizadas.");
+  }
+
+  function deleteMealItem(meal, form, index) {
+    const items = readMealItems(form, meal);
+    items.splice(index, 1);
+    const kept = items.filter((item) => item.grams > 0);
+    if (!kept.length) {
+      removeMeal(meal.id);
+      editingMealId = null;
+      return;
+    }
+    meal.items = kept;
+    recalcMeal(meal);
+    queueSave();
+    renderToday();
+    renderDiary();
+    toast("Alimento removido.");
+  }
+
+  function mealEditor(meal) {
+    const form = h("form", { class: "meal-edit", dataset: { mealEdit: meal.id }, "aria-label": `Editar ${meal.label}` });
+    form.append(h("div", { class: "meal-edit-head" },
+      h("strong", {}, `Editar ${meal.label}`),
+      h("span", { class: "sub" }, "Quantidades em gramas")
+    ));
+    const list = h("ul", { class: "meal-edit-list" });
+    meal.items.forEach((item, index) => {
+      const kcal = h("span", { class: "e-kcal" }, `${nf(item.kcal)} kcal`);
+      const input = h("input", {
+        type: "number",
+        min: "0",
+        step: "5",
+        value: item.grams,
+        inputmode: "numeric",
+        "data-meal-item-grams": String(index),
+        "aria-label": `Quantidade de ${item.name} em gramas`,
+        oninput: (event) => {
+          const next = scaleMealItem(item, event.target.value);
+          kcal.textContent = `${nf(next.kcal)} kcal`;
+        }
+      });
+      list.append(h("li", { class: "meal-edit-item" },
+        h("div", { class: "e-top" },
+          h("span", { class: "e-name" }, item.name),
+          kcal
+        ),
+        h("div", { class: "e-controls" },
+          h("label", { class: "e-qty" }, "Qtd.", input, "g"),
+          h("button", {
+            class: "e-del",
+            type: "button",
+            "data-del-meal-item": String(index),
+            onclick: () => deleteMealItem(meal, form, index),
+            "aria-label": `Excluir ${item.name}`
+          }, "Excluir")
+        )
+      ));
+    });
+    form.append(list);
+    form.append(h("div", { class: "meal-edit-actions" },
+      h("button", { class: "btn btn-primary btn-sm", type: "submit" }, "Salvar"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { editingMealId = null; renderToday(); } }, "Cancelar")
+    ));
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      saveMealEdit(meal, form);
+    });
+    return form;
+  }
+
   function renderToday() {
     if (!state) return;
     const totals = dayTotals();
@@ -2915,8 +3054,21 @@ img,svg{display:block}
               h("small", {}, `${meal.label} · ${fmtTime(meal.at)} · ${meal.items.map((item) => `${nf(item.grams)} g`).join(", ")}`)
             ),
             h("span", { class: "r-kcal" }, `${nf(meal.kcal)} kcal`),
+            h("button", {
+              class: "r-edit",
+              type: "button",
+              "data-edit-meal": meal.id,
+              "aria-label": `Editar ${meal.label}`,
+              "title": "Editar quantidades",
+              "aria-expanded": String(editingMealId === meal.id),
+              onclick: () => {
+                editingMealId = editingMealId === meal.id ? null : meal.id;
+                renderToday();
+              }
+            }, "✎"),
             h("button", { class: "r-del", type: "button", "data-del-meal": meal.id, "aria-label": `Remover ${meal.label}` }, "✕")
           ));
+          if (editingMealId === meal.id) section.append(mealEditor(meal));
         }
         mealList.append(section);
       }
@@ -3662,6 +3814,7 @@ img,svg{display:block}
     const index = d.meals.findIndex((meal) => meal.id === id);
     if (index < 0) return;
     d.meals.splice(index, 1);
+    if (editingMealId === id) editingMealId = null;
     queueSave();
     renderToday();
     renderDiary();

@@ -453,6 +453,40 @@ await check("4i. sugere compras dentro do orçamento e responde no assistente", 
   await page.close();
 });
 
+await check("4j. edita quantidade e exclui alimento da refeição", async () => {
+  await resetAll();
+  await seed(demoState());
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "comi 2 ovos e um pão francês");
+  await waitChat(page, "Total da refeição: 296 kcal");
+  await goView(page, "alimentacao");
+  await page.$eval("[data-edit-meal]", (el) => el.click());
+  await page.waitForSelector(".meal-edit");
+  await page.$eval('[data-meal-item-grams="0"]', (el) => { el.value = "150"; });
+  await page.$eval("[data-meal-edit]", (form) => form.requestSubmit());
+  const edited = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    const meal = current?.data.days[today()]?.meals?.[0];
+    return meal?.items?.[0]?.grams === 150 ? meal : null;
+  });
+  equal(edited.items.length, 2, "edição mantém os dois alimentos");
+  assert(Math.abs(edited.kcal - 368) <= 1, `kcal após editar: ${edited.kcal}`);
+
+  await page.$eval("[data-edit-meal]", (el) => el.click());
+  await page.waitForSelector(".meal-edit");
+  await page.$eval('[data-del-meal-item="1"]', (el) => el.click());
+  const afterDelete = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    const meal = current?.data.days[today()]?.meals?.[0];
+    return meal?.items?.length === 1 ? meal : null;
+  });
+  equal(afterDelete.items[0].name, "Ovo cozido", "sobrou o ovo");
+  assert(!(await textOf(page, "#meal-list")).includes("Pão francês"), "pão deveria ter saído da lista");
+  await page.close();
+});
+
 await check("4e. sem dados públicos, não inventa valores", async () => {
   await resetAll();
   await setConfig({ foodMode: "notfound" });

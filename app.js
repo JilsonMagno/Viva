@@ -182,6 +182,7 @@
   let dirty = false;
   let chatBusy = false;
   let deleteArmed = 0;
+  let editingMealId = null;
   let installPrompt = null;
   const waterUndo = [];
 
@@ -1991,6 +1992,125 @@
     }
   }
 
+  function scaleMealItem(item, grams) {
+    const next = Math.max(0, round(Number(grams) || 0));
+    const old = Number(item.grams) || 0;
+    const ratio = old > 0 ? next / old : 0;
+    return {
+      ...item,
+      grams: next,
+      kcal: +(Number(item.kcal || 0) * ratio).toFixed(1),
+      p: +(Number(item.p || 0) * ratio).toFixed(1),
+      c: +(Number(item.c || 0) * ratio).toFixed(1),
+      f: +(Number(item.f || 0) * ratio).toFixed(1)
+    };
+  }
+
+  function recalcMeal(meal) {
+    const totals = meal.items.reduce((acc, item) => ({
+      kcal: acc.kcal + Number(item.kcal || 0),
+      p: acc.p + Number(item.p || 0),
+      c: acc.c + Number(item.c || 0),
+      f: acc.f + Number(item.f || 0)
+    }), { kcal: 0, p: 0, c: 0, f: 0 });
+    meal.kcal = round(totals.kcal);
+    meal.p = +totals.p.toFixed(1);
+    meal.c = +totals.c.toFixed(1);
+    meal.f = +totals.f.toFixed(1);
+  }
+
+  function readMealItems(form, meal) {
+    const inputs = $$("[data-meal-item-grams]", form);
+    return meal.items.map((item, index) => {
+      const value = parseNum(inputs[index]?.value);
+      return scaleMealItem(item, Number.isFinite(value) ? value : item.grams);
+    });
+  }
+
+  function saveMealEdit(meal, form) {
+    const items = readMealItems(form, meal).filter((item) => item.grams > 0);
+    if (!items.length) {
+      removeMeal(meal.id);
+      editingMealId = null;
+      return;
+    }
+    meal.items = items;
+    recalcMeal(meal);
+    editingMealId = null;
+    queueSave();
+    renderToday();
+    renderDiary();
+    toast("Quantidades atualizadas.");
+  }
+
+  function deleteMealItem(meal, form, index) {
+    const items = readMealItems(form, meal);
+    items.splice(index, 1);
+    const kept = items.filter((item) => item.grams > 0);
+    if (!kept.length) {
+      removeMeal(meal.id);
+      editingMealId = null;
+      return;
+    }
+    meal.items = kept;
+    recalcMeal(meal);
+    queueSave();
+    renderToday();
+    renderDiary();
+    toast("Alimento removido.");
+  }
+
+  function mealEditor(meal) {
+    const form = h("form", { class: "meal-edit", dataset: { mealEdit: meal.id }, "aria-label": `Editar ${meal.label}` });
+    form.append(h("div", { class: "meal-edit-head" },
+      h("strong", {}, `Editar ${meal.label}`),
+      h("span", { class: "sub" }, "Quantidades em gramas")
+    ));
+    const list = h("ul", { class: "meal-edit-list" });
+    meal.items.forEach((item, index) => {
+      const kcal = h("span", { class: "e-kcal" }, `${nf(item.kcal)} kcal`);
+      const input = h("input", {
+        type: "number",
+        min: "0",
+        step: "5",
+        value: item.grams,
+        inputmode: "numeric",
+        "data-meal-item-grams": String(index),
+        "aria-label": `Quantidade de ${item.name} em gramas`,
+        oninput: (event) => {
+          const next = scaleMealItem(item, event.target.value);
+          kcal.textContent = `${nf(next.kcal)} kcal`;
+        }
+      });
+      list.append(h("li", { class: "meal-edit-item" },
+        h("div", { class: "e-top" },
+          h("span", { class: "e-name" }, item.name),
+          kcal
+        ),
+        h("div", { class: "e-controls" },
+          h("label", { class: "e-qty" }, "Qtd.", input, "g"),
+          h("button", {
+            class: "e-del",
+            type: "button",
+            "data-del-meal-item": String(index),
+            onclick: () => deleteMealItem(meal, form, index),
+            "aria-label": `Excluir ${item.name}`
+          }, "Excluir")
+        )
+      ));
+    });
+    form.append(list);
+    form.append(h("div", { class: "meal-edit-actions" },
+      h("button", { class: "btn btn-primary btn-sm", type: "submit" }, "Salvar"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { editingMealId = null; renderToday(); } }, "Cancelar")
+    ));
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      saveMealEdit(meal, form);
+    });
+    return form;
+  }
+
   function renderToday() {
     if (!state) return;
     const totals = dayTotals();
@@ -2049,8 +2169,21 @@
               h("small", {}, `${meal.label} · ${fmtTime(meal.at)} · ${meal.items.map((item) => `${nf(item.grams)} g`).join(", ")}`)
             ),
             h("span", { class: "r-kcal" }, `${nf(meal.kcal)} kcal`),
+            h("button", {
+              class: "r-edit",
+              type: "button",
+              "data-edit-meal": meal.id,
+              "aria-label": `Editar ${meal.label}`,
+              "title": "Editar quantidades",
+              "aria-expanded": String(editingMealId === meal.id),
+              onclick: () => {
+                editingMealId = editingMealId === meal.id ? null : meal.id;
+                renderToday();
+              }
+            }, "✎"),
             h("button", { class: "r-del", type: "button", "data-del-meal": meal.id, "aria-label": `Remover ${meal.label}` }, "✕")
           ));
+          if (editingMealId === meal.id) section.append(mealEditor(meal));
         }
         mealList.append(section);
       }
@@ -2796,6 +2929,7 @@
     const index = d.meals.findIndex((meal) => meal.id === id);
     if (index < 0) return;
     d.meals.splice(index, 1);
+    if (editingMealId === id) editingMealId = null;
     queueSave();
     renderToday();
     renderDiary();

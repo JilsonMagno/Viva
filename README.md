@@ -25,7 +25,7 @@ Seis abas, iguais às do app original e do protótipo:
 
 - **Início**: resumo de kcal e macros, atalhos, água, peso e hábitos da semana.
 - **Assistente**: conversa e registro por texto.
-- **Alimentação** (rótulo curto **Refeições** no celular): refeições agrupadas por café da manhã, almoço, lanche e jantar, com resumo do dia e sugestão.
+- **Alimentação** (rótulo curto **Refeições** no celular): refeições agrupadas por café da manhã, almoço, lanche e jantar, com resumo do dia, sugestão e edição de quantidade ou exclusão de cada alimento.
 - **Atividades**: minutos dos últimos 7 dias, atividades de hoje, registro de treino por músculos/intensidade/duração, simulador de gasto, sugestão de compras por orçamento e registro pelo assistente.
 - **Evolução**: dashboard completo, últimos 14 dias, médias e histórico de peso. O dashboard pode ser impresso ou salvo em PDF.
 - **Perfil**: metas, IA incluída, campo opcional de chave própria, exportação e exclusão.
@@ -37,15 +37,15 @@ Testes:
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
 - `node tests/ai-proxy.test.mjs`: 9 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter e recusa de foto no Groq.
 - `node tests/food-api.test.mjs`: 10 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g e ausência de dados.
-- `node tests/e2e.test.mjs`: 31 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 32 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as cinco suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 201.896 bytes crus, 51.607 bytes em gzip e 43.685 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 208.114 bytes crus, 52.952 bytes em gzip e 44.814 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.11.0`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.12.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -115,6 +115,16 @@ O treino também pode ser anotado pelo assistente:
 Cada treino é salvo como uma atividade de musculação, com MET 3,5 (leve), 6 (médio) ou 7,5 (intenso). O cartão **Treino de hoje** na tela principal mostra o nome do treino e a intensidade. Os campos ficam no mesmo JSON do diário; não é necessária uma migração nova.
 
 O Google não oferece uma API pública gratuita de nutrição estruturada; por isso a busca externa usa o Open Food Facts. Se você tiver uma API de busca própria, ela pode ser adicionada em `api/food.mjs`.
+
+## Editar refeição
+
+Na aba **Alimentação**, cada refeição tem um botão de edição (lápis). Ele abre um painel com todos os alimentos da refeição. Em cada alimento, você pode:
+
+- alterar a quantidade em gramas;
+- excluir apenas aquele alimento;
+- salvar as alterações ou cancelar.
+
+As calorias e os macros da refeição são recalculados na hora. Se todos os alimentos forem excluídos, a refeição também sai do diário. A alteração fica no mesmo JSON do dia; não precisa de migração.
 
 ## Compras com orçamento
 
