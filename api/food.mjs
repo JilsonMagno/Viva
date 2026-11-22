@@ -127,7 +127,7 @@ async function fetchProducts(query) {
     url.search = url.search.replace(/\+/g, "%20");
     try {
       const upstream = await fetch(url, {
-        headers: { Accept: "application/json", "User-Agent": "Viva/2.9.0 (https://viva-rouge-omega.vercel.app)" },
+        headers: { Accept: "application/json", "User-Agent": "Viva/2.10.0 (https://viva-rouge-omega.vercel.app)" },
         signal: AbortSignal.timeout(6000)
       });
       if (upstream.ok) {

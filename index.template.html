@@ -266,6 +266,10 @@ img,svg{display:block}
 .row .r-kcal{font-size:.84rem;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .row .r-del{border:0;background:none;color:var(--muted);padding:6px;border-radius:8px;line-height:0}
 .row .r-del:hover{color:var(--danger);background:var(--surface-2)}
+.intensity-pill{font-size:.7rem;font-weight:750;line-height:1;padding:6px 8px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2);white-space:nowrap;flex:none}
+.intensity-pill[data-level="leve"]{background:rgba(47,138,87,.12);border-color:rgba(47,138,87,.2);color:var(--green-2)}
+.intensity-pill[data-level="medio"]{background:rgba(232,201,106,.18);border-color:rgba(232,201,106,.34)}
+.intensity-pill[data-level="intenso"]{background:rgba(196,105,74,.14);border-color:rgba(196,105,74,.28);color:var(--terra)}
 .meal-group{display:grid;gap:2px;min-width:0}
 .meal-group + .meal-group{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
 .meal-group h3{font-size:.72rem;font-weight:750;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 2px}
@@ -520,6 +524,11 @@ img,svg{display:block}
                 </div>
               </div>
             </article>
+            <article class="card" aria-labelledby="home-workout-title">
+              <header class="card-head"><h2 id="home-workout-title">Treino de hoje</h2><span class="sub" id="home-workout-count">—</span></header>
+              <div id="home-workout-list"></div>
+              <button class="link" type="button" id="home-workout-add" style="margin-top:10px">+ Registrar treino</button>
+            </article>
             <article class="card" aria-labelledby="quick-title">
               <header class="card-head"><h2 id="quick-title">Atalhos</h2></header>
               <div class="quick-grid">
@@ -615,6 +624,28 @@ img,svg{display:block}
             </article>
           </div>
           <div class="stack">
+            <article class="card" aria-labelledby="workout-title">
+              <header class="card-head"><h2 id="workout-title">Registrar treino</h2><span class="sub">Músculos + intensidade</span></header>
+              <p class="targets-note">Ex.: “Peito e tríceps” com intensidade “Médio”. O treino aparece na tela principal.</p>
+              <form id="workout-form" class="stack" style="margin-top:12px;gap:12px">
+                <label class="field" for="workout-name">Treino
+                  <input id="workout-name" type="text" maxlength="60" placeholder="Peito e tríceps" autocomplete="off" required>
+                </label>
+                <div class="grid-2">
+                  <label class="field" for="workout-intensity">Intensidade
+                    <select id="workout-intensity">
+                      <option value="Leve">Leve</option>
+                      <option value="Médio" selected>Médio</option>
+                      <option value="Intenso">Intenso</option>
+                    </select>
+                  </label>
+                  <label class="field" for="workout-minutes">Duração (min)
+                    <input id="workout-minutes" type="number" min="5" max="180" step="5" value="45" inputmode="numeric">
+                  </label>
+                </div>
+                <button class="btn btn-primary btn-block" type="submit" id="workout-submit">Registrar treino</button>
+              </form>
+            </article>
             <article class="card" aria-labelledby="sim-title">
               <header class="card-head"><h2 id="sim-title">Simulador de atividade</h2><span class="sub" id="sim-kcal" aria-live="polite">≈ 0 kcal</span></header>
               <p class="targets-note">Escolha a atividade, a intensidade e o tempo. O cálculo usa seu peso mais recente.</p>
@@ -638,7 +669,7 @@ img,svg{display:block}
             </article>
             <article class="card">
               <header class="card-head"><h2>Registrar pelo assistente</h2></header>
-              <p class="targets-note">Diga à Viva o tipo e a duração: “corri 30 min”, “caminhei 20 min” ou “musculação 40 min”.</p>
+              <p class="targets-note">Diga à Viva o treino, a intensidade e a duração: “treinei peito e tríceps médio por 45 min” ou “costa e bíceps intenso”.</p>
               <button class="btn btn-subtle btn-block" type="button" data-chat-prompt="corri " style="margin-top:12px">Abrir assistente</button>
             </article>
           </div>

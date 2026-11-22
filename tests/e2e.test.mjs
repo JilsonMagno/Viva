@@ -374,6 +374,53 @@ await check("4g. padroniza o nome antes de pesquisar", async () => {
   await page.close();
 });
 
+await check("4h. registra treino com músculos e intensidade na tela principal", async () => {
+  await resetAll();
+  await seed(demoState({ days: {} }));
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await page.$eval("#home-workout-add", (el) => el.click());
+  await page.waitForFunction(() => !document.querySelector('[data-view-panel="atividades"]').hidden);
+  await page.type("#workout-name", "Peito e tríceps");
+  await page.select("#workout-intensity", "Médio");
+  await page.$eval("#workout-minutes", (el) => { el.value = "45"; });
+  await page.click("#workout-submit");
+  const first = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    return current && current.data.days[today()]?.activities?.length === 1 ? current : null;
+  });
+  const workout = first.data.days[today()].activities[0];
+  equal(workout.name, "Musculação", "atividade base");
+  equal(workout.workout, "Peito e Tríceps", "músculos");
+  equal(workout.intensity, "Médio", "intensidade");
+  equal(workout.minutes, 45, "minutos");
+  equal(workout.met, 6, "MET do treino médio");
+  assert((await textOf(page, "#activity-list")).includes("Peito e Tríceps"), "lista deveria mostrar o treino");
+
+  await send(page, "costa e bíceps intenso 50 min");
+  const second = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    return current && current.data.days[today()]?.activities?.length === 2 ? current : null;
+  });
+  const strong = second.data.days[today()].activities[1];
+  equal(strong.workout, "Costas e Bíceps", "músculos pelo assistente");
+  equal(strong.intensity, "Intenso", "intensidade pelo assistente");
+  equal(strong.minutes, 50, "minutos pelo assistente");
+  equal(strong.met, 7.5, "MET do treino intenso");
+
+  await send(page, "fiz peito de frango");
+  const afterChicken = await rowFor(USER_A.id);
+  equal(afterChicken.data.days[today()].activities.length, 2, "frango não deve virar treino");
+
+  await goView(page, "hoje");
+  const home = await textOf(page, "#home-workout-list");
+  assert(home.includes("Peito e Tríceps") && home.includes("Médio"), "treino médio na tela principal");
+  assert(home.includes("Costas e Bíceps") && home.includes("Intenso"), "treino intenso na tela principal");
+  equal(await textOf(page, "#home-workout-count"), "2 treinos", "contador de treinos");
+  await page.close();
+});
+
 await check("4e. sem dados públicos, não inventa valores", async () => {
   await resetAll();
   await setConfig({ foodMode: "notfound" });

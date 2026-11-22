@@ -1094,24 +1094,104 @@
   ];
 
   const INTENSITY = ["Leve", "Moderada", "Intensa"];
+  const WORKOUT_INTENSITY = ["Leve", "Médio", "Intenso"];
+  const WORKOUT_METS = { Leve: 3.5, "Médio": 6, Intenso: 7.5 };
+  const WORKOUT_LABELS = {
+    peito: "Peito", peitoral: "Peito", triceps: "Tríceps", biceps: "Bíceps",
+    costa: "Costas", costas: "Costas", dorsal: "Costas", dorsais: "Costas",
+    ombro: "Ombros", ombros: "Ombros", perna: "Pernas", pernas: "Pernas",
+    gluteo: "Glúteos", gluteos: "Glúteos", coxa: "Coxas", coxas: "Coxas",
+    quadriceps: "Quadríceps", posterior: "Posterior", posteriores: "Posterior",
+    panturrilha: "Panturrilhas", panturrilhas: "Panturrilhas",
+    abdomen: "Abdômen", abdomem: "Abdômen", core: "Core",
+    superiores: "Superiores", inferior: "Inferiores", inferiores: "Inferiores",
+    "full body": "Corpo inteiro", "corpo inteiro": "Corpo inteiro", corpo: "Corpo inteiro",
+    cardio: "Cardio", funcional: "Funcional", crossfit: "Crossfit"
+  };
+  const WORKOUT_WORDS = /\b(?:treinei|treino|treinar|academia|musculacao|forca|pesos|hipertrofia)\b/;
+  const MUSCLE_PATTERN = "peito|peitoral|triceps|biceps|costa|costas|dorsal|ombro|ombros|perna|pernas|gluteo|gluteos|coxa|coxas|quadriceps|posterior|panturrilha|panturrilhas|abdomen|abdomem|core|superiores|inferiores|full body|corpo inteiro|cardio|funcional|crossfit";
+  const FIZ_WORKOUT = new RegExp(`\\bfiz\\b.*\\b(?:${MUSCLE_PATTERN})\\b.*\\be\\b.*\\b(?:${MUSCLE_PATTERN})\\b`);
+  const TWO_MUSCLES = new RegExp(`\\b(?:${MUSCLE_PATTERN})\\b.*\\be\\b.*\\b(?:${MUSCLE_PATTERN})\\b`);
   const SIM = { activity: 1, intensity: 1, minutes: 30 };
   const PHOTO = { dataUrl: "", items: [], total: 0, state: "idle" };
   let photoBusy = false;
   const PHOTO_MAX_BYTES = 12 * 1024 * 1024;
   const PHOTO_MAX_SIDE = 1280;
 
+  function titleCaseWorkout(text) {
+    const small = new Set(["de", "da", "do", "das", "dos", "e", "com"]);
+    return String(text || "").trim().split(/\s+/).map((word, index) => {
+      const lower = word.toLowerCase();
+      if (index > 0 && small.has(lower)) return lower;
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    }).join(" ");
+  }
+
+  function workoutName(value) {
+    const raw = String(value || "").trim().replace(/\s+/g, " ").slice(0, 60);
+    if (!raw) return "";
+    const whole = WORKOUT_LABELS[normalize(raw)];
+    if (whole) return whole;
+    const parts = raw.split(/\s*(?:,|\+|\/| e )\s*/i).filter(Boolean);
+    return parts.map((part) => WORKOUT_LABELS[normalize(part)] || titleCaseWorkout(part)).join(" e ").slice(0, 60);
+  }
+
+  function parseMinutes(norm, fallback) {
+    let minutes = 0;
+    let explicit = false;
+    const mins = norm.match(/(\d+(?:[.,]\d+)?)\s*(?:min|minutos?)\b/);
+    const hours = norm.match(/(\d+(?:[.,]\d+)?)\s*(?:h|horas?)\b/);
+    if (mins) { minutes = parseNum(mins[1]); explicit = true; }
+    else if (hours) { minutes = parseNum(hours[1]) * 60; explicit = true; }
+    else if (/meia hora/.test(norm)) { minutes = 30; explicit = true; }
+    if (!explicit) minutes = fallback;
+    if (!(minutes > 0 && minutes <= 600)) return null;
+    return minutes;
+  }
+
+  function parseIntensity(norm) {
+    if (/\b(?:intens[oa]|forte|pesad[oa])\b/.test(norm)) return "Intenso";
+    if (/\b(?:moderad[oa]|medi[oa])\b/.test(norm)) return "Médio";
+    if (/\bleve\b/.test(norm)) return "Leve";
+    return null;
+  }
+
+  function parseWorkout(text) {
+    const norm = normalize(text);
+    const bareWorkout = TWO_MUSCLES.test(norm) && (parseIntensity(norm) || /\b\d+(?:[.,]\d+)?\s*(?:min|minutos?|h|horas?)\b/.test(norm) || /meia hora/.test(norm));
+    if (!WORKOUT_WORDS.test(norm) && !FIZ_WORKOUT.test(norm) && !bareWorkout) return null;
+    const minutes = parseMinutes(norm, 45);
+    if (!minutes) return null;
+    const intensity = parseIntensity(norm) || "Médio";
+    let rest = norm
+      .replace(/\b(?:treinei|treino|treinar|fiz|fazer|hoje|agora|academia|musculacao|forca|pesos|hipertrofia)\b/g, " ")
+      .replace(/\b(?:leve|moderado|moderada|medio|media|intenso|intensa|forte|pesado|pesada)\b/g, " ")
+      .replace(/\b\d+(?:[.,]\d+)?\s*(?:min|minutos?|h|horas?)\b/g, " ")
+      .replace(/\bmeia hora\b/g, " ")
+      .replace(/\b(?:de|do|da|dos|das|com|por|as|um|uma|o|a|os)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const workout = workoutName(rest) || "Musculação";
+    const met = WORKOUT_METS[intensity];
+    const kg = latestWeight() || 70;
+    return {
+      name: "Musculação",
+      workout,
+      minutes: round(minutes),
+      met,
+      kcal: (met * 3.5 * kg * minutes) / 200,
+      intensity
+    };
+  }
+
   function parseActivity(text) {
+    const workout = parseWorkout(text);
+    if (workout) return workout;
     const norm = normalize(text);
     const activity = ACTIVITIES.find((item) => item.re.test(norm));
     if (!activity) return null;
-    let minutes = 0;
-    const mins = norm.match(/(\d+(?:[.,]\d+)?)\s*(?:min|minutos?)\b/);
-    const hours = norm.match(/(\d+(?:[.,]\d+)?)\s*(?:h|horas?)\b/);
-    if (mins) minutes = parseNum(mins[1]);
-    else if (hours) minutes = parseNum(hours[1]) * 60;
-    else if (/meia hora/.test(norm)) minutes = 30;
-    if (!minutes) minutes = 30;
-    if (!(minutes > 0 && minutes <= 600)) return null;
+    const minutes = parseMinutes(norm, 30);
+    if (!minutes) return null;
     const kg = latestWeight() || 70;
     return {
       name: activity.name,
@@ -1168,6 +1248,60 @@
     toast(`${activity.name} registrada: ${SIM.minutes} min, ≈ ${nf(round(kcal))} kcal.`);
   }
 
+  function intensityLevel(value) {
+    const key = normalize(value || "");
+    if (key.startsWith("leve")) return "leve";
+    if (key.startsWith("intens") || key.startsWith("forte") || key.startsWith("pesad")) return "intenso";
+    return "medio";
+  }
+
+  function displayIntensity(value) {
+    return { leve: "Leve", medio: "Médio", intenso: "Intenso" }[intensityLevel(value)];
+  }
+
+  function isWorkout(activity) {
+    return Boolean(activity?.workout) || /musculacao|academia|treino|forca|pesos/.test(normalize(activity?.name || ""));
+  }
+
+  function workoutTitle(activity) {
+    return activity.workout || activity.name;
+  }
+
+  function workoutMeta(activity, includeIntensity = true) {
+    const parts = [`${nf(activity.minutes)} min`];
+    if (includeIntensity) parts.push(displayIntensity(activity.intensity));
+    if (activity.workout && activity.workout !== activity.name) parts.push(activity.name);
+    if (Number.isFinite(Number(activity.met))) parts.push(`MET ${nf1(activity.met)}`);
+    return parts.join(" · ");
+  }
+
+  function addWorkout(event) {
+    event.preventDefault();
+    if (!state) return;
+    const nameInput = $("#workout-name");
+    const name = workoutName(nameInput?.value || "");
+    if (!name) {
+      toast("Diga qual treino foi. Ex.: “Peito e tríceps”.");
+      nameInput?.focus();
+      return;
+    }
+    const intensitySelect = $("#workout-intensity");
+    const intensity = WORKOUT_INTENSITY.includes(intensitySelect?.value) ? intensitySelect.value : "Médio";
+    const minutes = clamp(parseNum($("#workout-minutes")?.value) || 45, 5, 180);
+    const met = WORKOUT_METS[intensity];
+    const kg = latestWeight() || 70;
+    addActivity({
+      name: "Musculação",
+      workout: name,
+      minutes,
+      met,
+      kcal: (met * 3.5 * kg * minutes) / 200,
+      intensity
+    });
+    if (nameInput) nameInput.value = "";
+    toast(`${name} registrado: ${minutes} min · ${intensity}.`);
+  }
+
   function isQuestion(text) {
     const raw = String(text || "").trim();
     if (raw.endsWith("?")) return true;
@@ -1176,7 +1310,7 @@
 
   const RECORDING = /\b(comi|tomei|bebi|registra|registre|anota|anote|adiciona|adicione|peso|pesando|corri|caminhei|pedalei|nadei|treinei|fiz)\b/;
 
-  const WELCOME = "Oi! Eu sou a Viva. Posso anotar refeições, água, atividade e peso. Ex.: “comi 2 ovos e um pão”, “bebi 500 ml de água”, “corri 30 min” ou “peso 78,5”.";
+  const WELCOME = "Oi! Eu sou a Viva. Posso anotar refeições, água, treino e peso. Ex.: “comi 2 ovos e um pão”, “bebi 500 ml de água”, “treinei peito e tríceps médio” ou “peso 78,5”.";
 
   function aiStoreKey() {
     return `${AI_STORE}:${user?.id || "local"}`;
@@ -1419,7 +1553,8 @@
     const activity = parseActivity(text);
     if (activity) {
       const entry = addActivity(activity);
-      return `${entry.name} por ${entry.minutes} min: cerca de ${nf(entry.kcal)} kcal gastas. Bom movimento!`;
+      const label = entry.workout ? `${entry.workout} (${displayIntensity(entry.intensity)})` : entry.name;
+      return `${label} por ${entry.minutes} min: cerca de ${nf(entry.kcal)} kcal gastas. Bom movimento!`;
     }
     const meal = await parseMeal(text);
     if (meal && meal.items.length) {
@@ -1534,6 +1669,7 @@
     apple: [["path", { d: "M12 7c-3-2-6 0-6 4 0 4 3 8 6 8s6-4 6-8c0-4-3-6-6-4Z" }], ["path", { d: "M12 7V4M12 4c1.5 0 3-1 3-2" }]],
     moon: [["path", { d: "M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z" }]],
     run: [["circle", { cx: 15, cy: 5, r: 2 }], ["path", { d: "M9 21l2-6-3-3 3-4 4 2 3 3M8 12l-3 2M14 15l3 6" }]],
+    dumbbell: [["path", { d: "M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" }], ["path", { d: "M9 6v12M15 6v12" }]],
     scale: [["rect", { x: 3.5, y: 5, width: 17, height: 15, rx: 3 }], ["path", { d: "M8 5V4h8v1M12 10l2.5-2" }]],
     drop: [["path", { d: "M12 3s6 6.3 6 10.5a6 6 0 0 1-12 0C6 9.3 12 3 12 3Z" }]]
   };
@@ -1594,6 +1730,31 @@
     const name = state?.profile?.name ? `, ${state.profile.name.split(" ")[0]}` : "";
     $("#greet-title").textContent = `${salute}${name}.`;
     setAvatar();
+  }
+
+  function renderHomeWorkouts() {
+    const host = $("#home-workout-list");
+    if (!host) return;
+    const workouts = (dayData().activities || []).filter(isWorkout).slice().reverse();
+    const count = $("#home-workout-count");
+    if (count) count.textContent = workouts.length ? `${workouts.length} treino${workouts.length === 1 ? "" : "s"}` : "—";
+    host.innerHTML = "";
+    if (!workouts.length) {
+      host.append(emptyBlock("Nenhum treino hoje.", "Registre em Atividades: “Peito e tríceps, médio”."));
+      return;
+    }
+    for (const activity of workouts) {
+      host.append(h(
+        "div",
+        { class: "row" },
+        h("span", { class: "r-ico", "aria-hidden": "true" }, icon("dumbbell")),
+        h("div", { class: "r-main" },
+          h("strong", {}, workoutTitle(activity)),
+          h("small", {}, workoutMeta(activity, false))
+        ),
+        h("span", { class: "intensity-pill", dataset: { level: intensityLevel(activity.intensity) } }, displayIntensity(activity.intensity))
+      ));
+    }
   }
 
   function renderToday() {
@@ -1700,16 +1861,21 @@
       activityList.append(emptyBlock("Sem atividade hoje.", "Diga: “corri 30 min” ou “caminhei 20 min”."));
     } else {
       for (const activity of [...activities].reverse()) {
+        const workout = isWorkout(activity);
+        const title = workout ? workoutTitle(activity) : activity.name;
+        const detail = workout
+          ? workoutMeta(activity)
+          : `${activity.minutes} min${activity.intensity ? ` · ${activity.intensity}` : ""} · MET ${nf1(activity.met)}`;
         activityList.append(h(
           "li",
           { class: "row" },
-          h("span", { class: "r-ico", "aria-hidden": "true" }, icon("run")),
+          h("span", { class: "r-ico", "aria-hidden": "true" }, icon(workout ? "dumbbell" : "run")),
           h("div", { class: "r-main" },
-            h("strong", {}, activity.name),
-            h("small", {}, `${activity.minutes} min${activity.intensity ? ` · ${activity.intensity}` : ""} · MET ${nf1(activity.met)}`)
+            h("strong", {}, title),
+            h("small", {}, detail)
           ),
           h("span", { class: "r-kcal" }, `${nf(activity.kcal)} kcal`),
-          h("button", { class: "r-del", type: "button", "data-del-activity": activity.id, "aria-label": `Remover ${activity.name}` }, "✕")
+          h("button", { class: "r-del", type: "button", "data-del-activity": activity.id, "aria-label": `Remover ${title}` }, "✕")
         ));
       }
     }
@@ -1717,6 +1883,7 @@
     renderActivitySimulator();
     renderHabits();
     renderActivityWeek();
+    renderHomeWorkouts();
   }
 
   function renderHabits() {
@@ -2549,6 +2716,10 @@
     });
     const simAdd = $("#sim-add");
     if (simAdd) simAdd.addEventListener("click", addSimulatedActivity);
+    const workoutForm = $("#workout-form");
+    if (workoutForm) workoutForm.addEventListener("submit", addWorkout);
+    const homeWorkoutAdd = $("#home-workout-add");
+    if (homeWorkoutAdd) homeWorkoutAdd.addEventListener("click", () => setView("atividades"));
     $("#photo-input")?.addEventListener("change", handlePhotoFile);
     $("#photo-analyze")?.addEventListener("click", analyzeDishPhoto);
     $("#photo-clear")?.addEventListener("click", resetPhoto);

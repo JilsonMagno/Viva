@@ -26,7 +26,7 @@ Seis abas, iguais às do app original e do protótipo:
 - **Início**: resumo de kcal e macros, atalhos, água, peso e hábitos da semana.
 - **Assistente**: conversa e registro por texto.
 - **Alimentação** (rótulo curto **Refeições** no celular): refeições agrupadas por café da manhã, almoço, lanche e jantar, com resumo do dia e sugestão.
-- **Atividades**: minutos dos últimos 7 dias, atividades de hoje, simulador de gasto por tipo/intensidade/duração e registro pelo assistente.
+- **Atividades**: minutos dos últimos 7 dias, atividades de hoje, registro de treino por músculos/intensidade/duração, simulador de gasto e registro pelo assistente.
 - **Evolução**: dashboard completo, últimos 14 dias, médias e histórico de peso. O dashboard pode ser impresso ou salvo em PDF.
 - **Perfil**: metas, IA incluída, campo opcional de chave própria, exportação e exclusão.
 
@@ -37,15 +37,15 @@ Testes:
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
 - `node tests/ai-proxy.test.mjs`: 9 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter e recusa de foto no Groq.
 - `node tests/food-api.test.mjs`: 10 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g e ausência de dados.
-- `node tests/e2e.test.mjs`: 29 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, padronização dos nomes, nomes fora da tabela, peso da porção, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 30 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as cinco suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 178.699 bytes crus, 46.572 bytes em gzip e 48.607 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 188.912 bytes crus, 48.537 bytes em gzip e 41.109 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.9.0`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.10.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -101,6 +101,18 @@ Todo resultado encontrado é gravado na tabela `public.viva_foods`, para que o m
 A tabela guarda apenas nome, macros, porção, fonte e URL pública. Não guarda dados de saúde, conta ou diário. Usuários autenticados só podem **ler**; a gravação passa pela função `viva_save_food`, que valida o formato e os valores. A função `viva_touch_food` conta o uso.
 
 Para ativar em produção, aplique a migração `supabase/migrations/20261122150000_food_cache.sql` no SQL Editor do Supabase. Sem ela, a API continua funcionando: apenas segue consultando o Open Food Facts e ignora o cache.
+
+## Treinos
+
+Na aba **Atividades**, o cartão **Registrar treino** grava o grupo muscular, a intensidade e a duração. Exemplo: “Peito e tríceps” com intensidade “Médio” e 45 minutos.
+
+O treino também pode ser anotado pelo assistente:
+
+- `treinei peito e tríceps médio`
+- `costa e bíceps intenso 50 min`
+- `fiz perna e glúteo leve por 40 min`
+
+Cada treino é salvo como uma atividade de musculação, com MET 3,5 (leve), 6 (médio) ou 7,5 (intenso). O cartão **Treino de hoje** na tela principal mostra o nome do treino e a intensidade. Os campos ficam no mesmo JSON do diário; não é necessária uma migração nova.
 
 O Google não oferece uma API pública gratuita de nutrição estruturada; por isso a busca externa usa o Open Food Facts. Se você tiver uma API de busca própria, ela pode ser adicionada em `api/food.mjs`.
 
