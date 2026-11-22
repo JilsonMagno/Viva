@@ -16,10 +16,12 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 - Exportar os dados em JSON e apagar tudo, com confirmação em dois toques.
 - Instalável no celular (tela inicial), com casca em cache.
 - Base de 83 alimentos com valores por 100 g, fonte e referência por item (TACO 4ª ed. e USDA FoodData Central).
+- Quantidades por texto: colheres de sopa/chá, colheres comuns, copos, xícaras, fatias, gramas, ml, unidades e porções. `4 colheres de aveia` e `1 colher de aveia` geram porções e calorias diferentes.
+- Nomes fora da tabela: o app consulta o Open Food Facts, usa os valores por 100 g e mostra a fonte. Se não houver dados completos, não anota e não inventa valores.
 
 ## Layout
 
-Seis abas, iguais às do app original (`viva-app.zip`) e do protótipo `Viva.html`:
+Seis abas, iguais às do app original e do protótipo:
 
 - **Início**: resumo de kcal e macros, atalhos, água, peso e hábitos da semana.
 - **Assistente**: conversa e registro por texto.
@@ -34,15 +36,16 @@ Testes:
 - `node tests/rls.test.mjs`: 11 verificações da migração e das regras de acesso, em Postgres real (PGlite), incluindo um usuário anônimo.
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
 - `node tests/ai-proxy.test.mjs`: 9 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter e recusa de foto no Groq.
-- `node tests/e2e.test.mjs`: 24 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
-- `npm test`: roda as quatro suítes.
+- `node tests/food-api.test.mjs`: 7 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, plural, valores por 100 g e ausência de dados.
+- `node tests/e2e.test.mjs`: 27 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, nomes fora da tabela, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `npm test`: roda as cinco suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 171.192 bytes crus, 44.579 bytes em gzip e 46.522 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 176.012 bytes crus, 45.740 bytes em gzip e 47.844 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.7.2`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.8.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -58,10 +61,18 @@ Criar contas e aceitar cobranças exige o seu login. Estes são os passos mínim
 
 Depois disso, abra o link no celular e toque em *Adicionar à tela inicial*.
 
+## Quantidades e nomes fora da tabela
+
+O assistente entende a quantidade antes do alimento: `4 colheres de aveia` usa 60 g (4 × 15 g), enquanto `1 colher de aveia` usa 15 g. Também aceita colher de sopa (15 g), colher de chá (5 g), copo (250 g), xícara (200 g), fatia (30 g), gramas, ml, litros, unidades, porções, prato, concha, scoop, barra, lata, pacote e pote.
+
+Quando o nome não está nos 83 alimentos da tabela, o app consulta o **Open Food Facts** pelo endpoint `/api/food`, valida o JWT do Supabase e usa os valores por 100 g do produto encontrado. A resposta mostra `Fonte: Open Food Facts`. Se a base não tiver kcal, proteína, carboidratos e gordura completos, o app **não anota e não inventa**: pede a porção e as kcal ou o uso de um alimento da tabela. A IA não é usada para estimar valores nutricionais de nomes desconhecidos.
+
+O Google não oferece uma API pública gratuita de nutrição estruturada; por isso a busca externa usa o Open Food Facts. Se você tiver uma API de busca própria, ela pode ser adicionada em `api/food.mjs`.
+
 ## Decisões
 
 - **Banco e login: Supabase.** Uma linha `jsonb` por conta. É simples e suficiente para duas pessoas. Separar em tabelas por tipo de registro fica para a Fase 3.
-- **IA: chave do dono no servidor por padrão; chave própria opcional.** O Vercel guarda `AI_API_KEY`; o navegador nunca recebe essa chave. O app chama `/api/ai`, que valida o JWT do Supabase, aplica limite de 30 perguntas/min por usuário e repassa a pergunta ao provedor. Quem preferir pode salvar a própria chave em Perfil; ela fica no `localStorage` daquele navegador e tem prioridade sobre a chave do servidor. Registros de refeição, água, atividade e peso não são enviados ao provedor; só o texto da pergunta e, quando o usuário pede, a foto do prato.
+- **IA: chave do dono no servidor por padrão; chave própria opcional.** O Vercel guarda `AI_API_KEY`; o navegador nunca recebe essa chave. O app chama `/api/ai`, que valida o JWT do Supabase, aplica limite de 30 perguntas/min por usuário e repassa a pergunta ao provedor. Quem preferir pode salvar a própria chave em Perfil; ela fica no `localStorage` daquele navegador e tem prioridade sobre a chave do servidor. Registros de refeição, água, atividade e peso não são enviados ao provedor; só o texto da pergunta e, quando o usuário pede, a foto do prato. Nomes de alimentos fora da tabela são enviados ao Open Food Facts para consulta; os valores ficam no seu diário no Supabase.
 - **Dados de saúde (LGPD):** cada conta vê só os próprios dados. O app tem exportação e exclusão. O texto de consentimento deve passar por revisão jurídica antes de o app ser usado por mais pessoas.
 - **Fora desta versão:** lembretes, compartilhamento entre contas e exclusão da conta de login (o app apaga os dados, mas o usuário de autenticação continua existindo no Supabase).
 
@@ -176,6 +187,7 @@ index.template.html              markup e CSS (fonte)
 build.cjs                        gera index.html a partir do template + app.js
 config.js                        URL e chave pública do Supabase; endpoint /api/ai
 api/ai.mjs                       proxy da IA; valida o JWT, usa chave do servidor ou do usuário e aceita fotos (visão)
+api/food.mjs                     busca nomes fora da tabela no Open Food Facts, com valores por 100 g
 manifest.webmanifest             instalação no celular
 icon.svg, icon-192.png, icon-512.png
 sw.js                            cache da casca do app (nunca cacheia /sb/)
@@ -186,6 +198,7 @@ scripts/deploy-backend.sh        publica migração, segredos e função
 tests/rls.test.mjs               RLS em Postgres real (PGlite)
 tests/foods.test.mjs             base de alimentos e fontes
 tests/ai-proxy.test.mjs          contrato do proxy de IA e visão
+tests/food-api.test.mjs          contrato da busca de alimentos fora da tabela
 tests/e2e.test.mjs               fluxos completos no Chromium
 tests/fixtures/                  referência auditável dos alimentos
 tests/support/server.cjs         Supabase simulado para os testes

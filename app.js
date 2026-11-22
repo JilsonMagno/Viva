@@ -818,32 +818,39 @@
     return chosen;
   }
 
+  const AMOUNT_TOKEN = "(\\d+(?:[.,]\\d+)?|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|meio|meia)";
+
+  function amountValue(token) {
+    return NUMBER_WORDS[token] ?? parseNum(token);
+  }
+
+  const QUANTITY_UNITS = [
+    { re: new RegExp(`${AMOUNT_TOKEN}\\s*colher(?:es)?\\s+de\\s+sopa\\s+(?:de\\s+)?$`), grams: 15 },
+    { re: new RegExp(`${AMOUNT_TOKEN}\\s*colher(?:es)?\\s+de\\s+cha\\s+(?:de\\s+)?$`), grams: 5 },
+    { re: new RegExp(`${AMOUNT_TOKEN}\\s*colher(?:es)?\\s+(?:de\\s+)?$`), grams: 15 },
+    { re: new RegExp(`${AMOUNT_TOKEN}\\s*(?:copos?)\\s+(?:de\\s+)?$`), grams: 250 },
+    { re: new RegExp(`${AMOUNT_TOKEN}\\s*(?:xicaras?)\\s+(?:de\\s+)?$`), grams: 200 },
+    { re: new RegExp(`${AMOUNT_TOKEN}\\s*(?:fatias?)\\s+(?:de\\s+)?$`), grams: 30 },
+    { re: new RegExp(`${AMOUNT_TOKEN}\\s*(?:gramas?|g)\\s+(?:de\\s+)?$`), grams: 1 },
+    { re: new RegExp(`${AMOUNT_TOKEN}\\s*(?:ml|mililitros?)\\s+(?:de\\s+)?$`), grams: 1 },
+    { re: new RegExp(`${AMOUNT_TOKEN}\\s*(?:litros?|l)\\s+(?:de\\s+)?$`), grams: 1000 },
+    { re: new RegExp(`${AMOUNT_TOKEN}\\s*(?:unidades?|porcoes?|porções?)\\s+(?:de\\s+)?$`), portion: true }
+  ];
+
   function quantityBefore(text, index, food) {
-    const window = text.slice(Math.max(0, index - 32), index);
-    const units = [
-      { re: /(\d+(?:[.,]\d+)?)\s*colher(?:es)?\s+de\s+sopa\s+(?:de\s+)?$/, grams: 15 },
-      { re: /(\d+(?:[.,]\d+)?)\s*colher(?:es)?\s+de\s+cha\s+(?:de\s+)?$/, grams: 5 },
-      { re: /(\d+(?:[.,]\d+)?)\s*(?:copos?)\s+(?:de\s+)?$/, grams: 250 },
-      { re: /(\d+(?:[.,]\d+)?)\s*(?:xicaras?)\s+(?:de\s+)?$/, grams: 200 },
-      { re: /(\d+(?:[.,]\d+)?)\s*(?:fatias?)\s+(?:de\s+)?$/, grams: 30 },
-      { re: /(\d+(?:[.,]\d+)?)\s*(?:gramas?|g)\s+(?:de\s+)?$/, grams: 1 },
-      { re: /(\d+(?:[.,]\d+)?)\s*(?:ml|mililitros?)\s+(?:de\s+)?$/, grams: 1 },
-      { re: /(\d+(?:[.,]\d+)?)\s*(?:litros?|l)\s+(?:de\s+)?$/, grams: 1000 }
-    ];
-    for (const unit of units) {
+    const window = text.slice(Math.max(0, index - 40), index);
+    for (const unit of QUANTITY_UNITS) {
       const match = window.match(unit.re);
-      if (match) {
-        const qty = parseNum(match[1]);
-        if (Number.isFinite(qty)) return qty * unit.grams;
-      }
+      if (!match) continue;
+      const qty = amountValue(match[1]);
+      if (!Number.isFinite(qty)) continue;
+      return unit.portion ? qty * food.portion : qty * unit.grams;
     }
-    const numeric = window.match(/(\d+(?:[.,]\d+)?)\s*(?:de\s+)?$/);
-    if (numeric) {
-      const qty = parseNum(numeric[1]);
+    const amount = window.match(new RegExp(`${AMOUNT_TOKEN}\\s*(?:de\\s+)?$`));
+    if (amount) {
+      const qty = amountValue(amount[1]);
       if (Number.isFinite(qty)) return qty * food.portion;
     }
-    const word = window.match(/(um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|meio|meia)\s+(?:de\s+)?$/);
-    if (word) return (NUMBER_WORDS[word[1]] || 1) * food.portion;
     return food.portion;
   }
 
@@ -859,25 +866,126 @@
     return "Jantar";
   }
 
-  function parseMeal(text) {
+  const MEAL_SEPARATOR = /\s*(?:,|;|\+|\be\b|\bcom\b|\bmais\b)\s*/;
+  const UNKNOWN_UNITS = [
+    { re: /^colher(?:es)?\s+de\s+sopa\b/, grams: 15 },
+    { re: /^colher(?:es)?\s+de\s+cha\b/, grams: 5 },
+    { re: /^colher(?:es)?\b/, grams: 15 },
+    { re: /^copos?\b/, grams: 250 },
+    { re: /^xicaras?\b/, grams: 200 },
+    { re: /^fatias?\b/, grams: 30 },
+    { re: /^(?:gramas?|g)\b/, grams: 1 },
+    { re: /^(?:ml|mililitros?)\b/, grams: 1 },
+    { re: /^(?:litros?|l)\b/, grams: 1000 },
+    { re: /^pratos?\b/, grams: 300 },
+    { re: /^conchas?\b/, grams: 100 },
+    { re: /^scoops?\b/, grams: 30 },
+    { re: /^barras?\b/, grams: 25 },
+    { re: /^latas?\b/, grams: 350 },
+    { re: /^pacotes?\b/, grams: 100 },
+    { re: /^potes?\b/, grams: 170 },
+    { re: /^(?:unidades?|porcoes|porcao)\b/, grams: 100 }
+  ];
+
+  function maskUnits(text) {
+    return text.replace(/\bcolher(?:es)?\s+de\s+(?:sopa|cha)\b/g, (unit) => " ".repeat(unit.length));
+  }
+
+  function mealSegments(text) {
+    const norm = normalize(text)
+      .replace(/^(comi|almocei|jantei|tomei|lanchei|merendei|hoje|agora)\s+/, "")
+      .replace(/\b(?:no|na)\s+(?:cafe da manha|almoco|jantar|lanche)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return norm.split(MEAL_SEPARATOR).map((part) => part.trim()).filter((part) => part.length > 1);
+  }
+
+  function parseUnknownSegment(segment) {
+    let rest = segment.trim();
+    let qty = 1;
+    const amount = rest.match(new RegExp(`^${AMOUNT_TOKEN}\\s*(.*)$`));
+    if (amount) {
+      qty = amountValue(amount[1]);
+      rest = amount[2].trim();
+    }
+    if (!Number.isFinite(qty) || qty <= 0) return null;
+
+    let grams = null;
+    for (const unit of UNKNOWN_UNITS) {
+      const match = rest.match(unit.re);
+      if (!match) continue;
+      grams = qty * unit.grams;
+      rest = rest.slice(match[0].length).trim();
+      break;
+    }
+    rest = rest.replace(/^(?:de|do|da|dos|das)\s+/, "").trim();
+    if (!rest || rest.length < 2) return null;
+    if (/^(?:colher|colheres|grama|gramas|g|ml|mililitro|mililitros|litro|litros|copo|copos|xicara|xicaras|fatia|fatias|unidade|unidades|porcao|porcoes|prato|pratos|concha|conchas|scoop|scoops|barra|barras|lata|latas|pacote|pacotes|pote|potes)$/.test(rest)) return null;
+    return { name: rest, grams: grams ?? qty * 100 };
+  }
+
+  async function lookupFood(name) {
+    try {
+      const session = await ensureSession();
+      if (!session) return null;
+      const res = await fetch("/api/food", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ name })
+      });
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => null);
+      return data?.food || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function parseMeal(text) {
     const norm = normalize(text);
-    const matchText = norm.replace(/\bcolher(?:es)?\s+de\s+(?:sopa|cha)\b/g, (unit) => " ".repeat(unit.length));
-    const hits = findFoodHits(matchText);
-    if (!hits.length) return null;
-    const items = hits.map((hit) => {
-      const grams = quantityBefore(norm, hit.index, hit.food);
-      const factor = grams / 100;
-      return {
-        foodId: hit.food.id,
-        name: hit.food.name,
-        grams: round(grams),
-        kcal: +(hit.food.kcal * factor).toFixed(1),
-        p: +(hit.food.p * factor).toFixed(1),
-        c: +(hit.food.c * factor).toFixed(1),
-        f: +(hit.food.f * factor).toFixed(1)
-      };
-    });
-    return { items, label: detectMealLabel(norm) };
+    const segments = mealSegments(text);
+    const items = [];
+    const unknown = [];
+    for (const segment of segments) {
+      const hits = findFoodHits(maskUnits(segment));
+      if (hits.length) {
+        for (const hit of hits) {
+          const grams = quantityBefore(segment, hit.index, hit.food);
+          const factor = grams / 100;
+          items.push({
+            foodId: hit.food.id,
+            name: hit.food.name,
+            grams: round(grams),
+            kcal: +(hit.food.kcal * factor).toFixed(1),
+            p: +(hit.food.p * factor).toFixed(1),
+            c: +(hit.food.c * factor).toFixed(1),
+            f: +(hit.food.f * factor).toFixed(1)
+          });
+        }
+        continue;
+      }
+      const unknownItem = parseUnknownSegment(segment);
+      if (!unknownItem) continue;
+      const found = await lookupFood(unknownItem.name);
+      if (!found) {
+        unknown.push(unknownItem.name);
+        continue;
+      }
+      const factor = unknownItem.grams / 100;
+      items.push({
+        foodId: `web-${found.code || found.name}`,
+        name: found.name,
+        grams: round(unknownItem.grams),
+        kcal: +(found.kcal * factor).toFixed(1),
+        p: +(found.protein * factor).toFixed(1),
+        c: +(found.carbs * factor).toFixed(1),
+        f: +(found.fat * factor).toFixed(1),
+        source: found.source || "Open Food Facts",
+        sourceUrl: found.url || ""
+      });
+    }
+    if (!items.length) return unknown.length ? { items: [], unknown, label: detectMealLabel(norm) } : null;
+    return { items, unknown, label: detectMealLabel(norm) };
   }
 
   function parseWater(text) {
@@ -1253,13 +1361,21 @@
       const entry = addActivity(activity);
       return `${entry.name} por ${entry.minutes} min: cerca de ${nf(entry.kcal)} kcal gastas. Bom movimento!`;
     }
-    const meal = parseMeal(text);
-    if (meal) {
+    const meal = await parseMeal(text);
+    if (meal && meal.items.length) {
       const saved = addMeal(meal.items, meal.label);
       const list = saved.items.map((item) => `${item.name} (${nf(item.kcal)} kcal)`).join(", ");
       const totals = dayTotals();
       const left = (state.targets?.kcal || 0) - totals.kcal + Math.round(totals.burned * 0.5);
-      return `Anotei no ${meal.label.toLowerCase()}: ${list}. Total da refeição: ${nf(saved.kcal)} kcal. Restam ${nf(left)} kcal hoje.`;
+      const sources = [...new Set(saved.items.map((item) => item.source).filter(Boolean))];
+      const sourceNote = sources.length ? ` Fonte: ${sources.join(", ")}.` : "";
+      const missing = meal.unknown?.length
+        ? ` Não encontrei dados para ${meal.unknown.map((name) => `“${name}”`).join(", ")}; não anotei esses itens.`
+        : "";
+      return `Anotei no ${meal.label.toLowerCase()}: ${list}. Total da refeição: ${nf(saved.kcal)} kcal. Restam ${nf(left)} kcal hoje.${sourceNote}${missing}`;
+    }
+    if (meal?.unknown?.length) {
+      return `Não encontrei dados confiáveis para ${meal.unknown.map((name) => `“${name}”`).join(", ")}. Não vou inventar valores. Informe a porção e as kcal, ou use um alimento da tabela.`;
     }
     if (question) {
       if (!state.profile.aiEnabled) return "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso anotar refeições, água, atividade e peso.";
@@ -1306,8 +1422,8 @@
       : "IA desligada — anotações e respostas locais";
     $("#ai-dot").dataset.on = String(ai);
     $("#chat-note").textContent = ai
-      ? `Só o texto da sua pergunta e, quando você enviar, a foto do prato vão para ${label}. Seus registros ficam no Supabase.`
-      : "Seus registros de refeição, água, atividade e peso não são enviados a provedores de IA.";
+      ? `Só o texto da pergunta e, se enviar, a foto vão para ${label}. Nomes fora da tabela são buscados no Open Food Facts. Seus registros ficam no Supabase.`
+      : "Seus registros ficam no Supabase. Nomes de alimentos fora da tabela são buscados no Open Food Facts.";
   }
 
   async function sendChat(text) {

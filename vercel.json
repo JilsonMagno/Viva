@@ -6,6 +6,9 @@
   "functions": {
     "api/ai.mjs": {
       "maxDuration": 30
+    },
+    "api/food.mjs": {
+      "maxDuration": 30
     }
   },
   "headers": [

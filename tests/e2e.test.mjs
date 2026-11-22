@@ -290,6 +290,68 @@ await check("4b. refeição entende plural e não confunde 'colher de sopa' com 
   await page.close();
 });
 
+await check("4c. colheres escalam a quantidade e as calorias", async () => {
+  await resetAll();
+  await seed(demoState());
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "4 colheres de aveia");
+  await waitChat(page, "Total da refeição: 236 kcal");
+  await send(page, "1 colher de aveia");
+  await waitChat(page, "Total da refeição: 59 kcal");
+  const row = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    return current && current.data.days[today()]?.meals?.length === 2 ? current : null;
+  });
+  const meals = row.data.days[today()].meals;
+  equal(meals[0].items[0].grams, 60, "4 colheres = 60 g");
+  equal(meals[0].kcal, 236, "4 colheres = 236 kcal");
+  equal(meals[1].items[0].grams, 15, "1 colher = 15 g");
+  equal(meals[1].kcal, 59, "1 colher = 59 kcal");
+  await page.close();
+});
+
+await check("4d. nome fora da tabela é buscado em base pública", async () => {
+  await resetAll();
+  await seed(demoState());
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "2 ovos e 100g de esfiha");
+  await waitChat(page, "Esfiha de carne");
+  const row = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    return current && current.data.days[today()]?.meals?.length === 1 ? current : null;
+  });
+  const meal = row.data.days[today()].meals[0];
+  equal(meal.items.length, 2, "itens conhecido + pesquisado");
+  equal(meal.items[0].name, "Ovo cozido", "alimento da tabela");
+  equal(meal.items[0].grams, 100, "gramas do ovo");
+  equal(meal.items[1].name, "Esfiha de carne", "nome retornado");
+  equal(meal.items[1].grams, 100, "gramas");
+  equal(meal.items[1].kcal, 250, "kcal");
+  equal(meal.items[1].source, "Open Food Facts", "fonte");
+  const state = await getState();
+  equal(state.foodCalls, 1, "consulta feita");
+  equal(state.foodQueries[0], "esfiha", "nome consultado");
+  await page.close();
+});
+
+await check("4e. sem dados públicos, não inventa valores", async () => {
+  await resetAll();
+  await setConfig({ foodMode: "notfound" });
+  await seed(demoState());
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "100g de esfiha");
+  await waitChat(page, "Não encontrei dados confiáveis");
+  const row = await rowFor(USER_A.id);
+  equal((row?.data.days[today()]?.meals || []).length, 0, "não deveria anotar");
+  await page.close();
+});
+
 await check("5. água soma, desfaz e persiste", async () => {
   await resetAll();
   const base = demoState({ days: {} });

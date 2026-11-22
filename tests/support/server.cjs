@@ -56,6 +56,20 @@ const state = {
   aiEndpoint: "",
   aiServer: null,
   lastAI: null,
+  foodMode: "ok",
+  foodResult: {
+    code: "test-food",
+    name: "Esfiha de carne",
+    brand: "Teste",
+    kcal: 250,
+    protein: 10,
+    carbs: 30,
+    fat: 10,
+    source: "Open Food Facts",
+    url: "https://world.openfoodfacts.org/product/test-food"
+  },
+  foodCalls: 0,
+  foodQueries: [],
   authorizeMode: "redirect"
 };
 
@@ -84,6 +98,9 @@ function reset() {
   state.aiEndpoint = "";
   state.aiServer = null;
   state.lastAI = null;
+  state.foodMode = "ok";
+  state.foodCalls = 0;
+  state.foodQueries = [];
   state.authorizeMode = "redirect";
 }
 
@@ -194,6 +211,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === "/api/food" && req.method === "POST") {
+    const body = (await readJson(req)) || {};
+    state.foodCalls += 1;
+    state.foodQueries.push(body.name);
+    if (state.foodMode === "notfound") {
+      json(res, { found: false }, 404);
+      return;
+    }
+    if (state.foodMode === "fail") {
+      json(res, { error: "lookup_unavailable" }, 502);
+      return;
+    }
+    json(res, { found: true, food: state.foodResult });
+    return;
+  }
+
   if (pathname === "/api/ai" && req.method === "POST") {
     const body = (await readJson(req)) || {};
     state.lastAI = {
@@ -218,6 +251,8 @@ const server = http.createServer(async (req, res) => {
     const body = (await readJson(req)) || {};
     if (body.authorizeMode) state.authorizeMode = body.authorizeMode;
     if (body.aiMode) state.aiMode = body.aiMode;
+    if (body.foodMode) state.foodMode = body.foodMode;
+    if (body.foodResult) state.foodResult = body.foodResult;
     if (typeof body.aiAnswer === "string") state.aiAnswer = body.aiAnswer;
     if (typeof body.aiEndpoint === "string") state.aiEndpoint = body.aiEndpoint;
     if ("aiServer" in body) state.aiServer = body.aiServer;
@@ -261,6 +296,8 @@ const server = http.createServer(async (req, res) => {
       aiQuestions: state.aiQuestions,
       aiBodies: state.aiBodies,
       lastAI: state.lastAI,
+      foodCalls: state.foodCalls,
+      foodQueries: state.foodQueries,
       tokens: [...state.tokens.keys()],
       refreshTokens: [...state.refresh.keys()]
     });
