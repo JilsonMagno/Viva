@@ -267,6 +267,17 @@ img,svg{display:block}
 .row .r-del{border:0;background:none;color:var(--muted);padding:6px;border-radius:8px;line-height:0}
 .row .r-del:hover{color:var(--danger);background:var(--surface-2)}
 .workout-intensity{font-size:.74rem;font-weight:700;color:var(--muted);white-space:nowrap;flex:none}
+.budget-result{display:grid;gap:12px;margin-top:14px}
+.budget-summary{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line)}
+.budget-summary strong{font-size:1.12rem;font-variant-numeric:tabular-nums}
+.budget-summary span{font-size:.78rem;color:var(--muted);text-align:right}
+.budget-list{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.budget-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.budget-item:last-child{border-bottom:0}
+.b-main{display:grid;gap:2px;min-width:0}
+.b-main strong{font-size:.9rem}
+.b-main small{color:var(--muted);font-size:.75rem;line-height:1.35}
+.b-price{font-weight:750;font-size:.88rem;white-space:nowrap;font-variant-numeric:tabular-nums}
 .meal-group{display:grid;gap:2px;min-width:0}
 .meal-group + .meal-group{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
 .meal-group h3{font-size:.72rem;font-weight:750;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 2px}
@@ -643,6 +654,27 @@ img,svg{display:block}
                 <button class="btn btn-primary btn-block" type="submit" id="workout-submit">Registrar treino</button>
               </form>
             </article>
+            <article class="card" aria-labelledby="budget-title">
+              <header class="card-head"><h2 id="budget-title">Compras com orçamento</h2><span class="sub">Valores estimados</span></header>
+              <p class="targets-note">Informe quanto você tem para a semana. A Viva monta uma cesta que chega o mais perto possível das metas de proteína e calorias.</p>
+              <form id="budget-form" class="stack" style="margin-top:12px;gap:12px">
+                <div class="grid-2">
+                  <label class="field" for="budget-value">Orçamento (R$)
+                    <input id="budget-value" type="number" min="10" max="100000" step="10" value="150" inputmode="decimal">
+                  </label>
+                  <label class="field" for="budget-days">Período
+                    <select id="budget-days">
+                      <option value="1">1 dia</option>
+                      <option value="7" selected>7 dias</option>
+                      <option value="14">14 dias</option>
+                      <option value="30">30 dias</option>
+                    </select>
+                  </label>
+                </div>
+                <button class="btn btn-primary btn-block" type="submit" id="budget-submit">Sugerir compras</button>
+              </form>
+              <div id="budget-result" class="budget-result" aria-live="polite"></div>
+            </article>
             <article class="card" aria-labelledby="sim-title">
               <header class="card-head"><h2 id="sim-title">Simulador de atividade</h2><span class="sub" id="sim-kcal" aria-live="polite">≈ 0 kcal</span></header>
               <p class="targets-note">Escolha a atividade, a intensidade e o tempo. O cálculo usa seu peso mais recente.</p>
@@ -933,6 +965,10 @@ img,svg{display:block}
 
   function nf1(n) {
     return Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+  }
+
+  function money(n) {
+    return Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
   // Mifflin-St Jeor com a média das constantes masculina (+5) e feminina (-161).
@@ -1617,6 +1653,51 @@ img,svg{display:block}
     { id: "doce-leite", name: "Doce de leite", aliases: ["doce de leite", "doce de leite cremoso"], portion: 30, kcal: 306.3, p: 5.5, c: 59.5, f: 6, src: "TACO", ref: "501" },
   ];
 
+  // Preços médios estimados por 100 g (nov/2026). Variam por região e mercado.
+  const MARKET = [
+    { id: "feijao", foodId: "feijao-carioca", label: "Feijão carioca", price: 0.8, maxPerDay: 200 },
+    { id: "frango", foodId: "frango-peito", label: "Peito de frango", price: 2, maxPerDay: 250 },
+    { id: "ovos", foodId: "ovo-cozido", label: "Ovos", price: 1.2, maxPerDay: 200, unit: "ovos", gramsPerUnit: 50 },
+    { id: "leite", foodId: "leite", label: "Leite integral", price: 0.5, maxPerDay: 300, unit: "L", gramsPerUnit: 1000 },
+    { id: "iogurte", foodId: "iogurte", label: "Iogurte natural", price: 1.2, maxPerDay: 200 },
+    { id: "queijo", foodId: "queijo-minas", label: "Queijo minas", price: 6, maxPerDay: 50 },
+    { id: "whey", foodId: "whey", label: "Whey protein", price: 13.33, maxPerDay: 50 },
+    { id: "arroz", foodId: "arroz-branco", label: "Arroz branco", price: 0.5, maxPerDay: 500 },
+    { id: "aveia", foodId: "aveia", label: "Aveia", price: 2, maxPerDay: 100 },
+    { id: "pao", foodId: "pao-integral", label: "Pão integral", price: 2.4, maxPerDay: 150 },
+    { id: "macarrao", foodId: "macarrao", label: "Macarrão", price: 1, maxPerDay: 150 },
+    { id: "tapioca", foodId: "tapioca", label: "Tapioca", price: 1, maxPerDay: 150 },
+    { id: "batata-doce", foodId: "batata-doce", label: "Batata-doce", price: 0.5, maxPerDay: 300 },
+    { id: "banana", foodId: "banana", label: "Banana", price: 0.6, maxPerDay: 200 },
+    { id: "tomate", foodId: "tomate", label: "Tomate", price: 0.7, maxPerDay: 200 },
+    { id: "cenoura", foodId: "cenoura", label: "Cenoura", price: 0.5, maxPerDay: 200 },
+    { id: "salada", foodId: "salada", label: "Alface", price: 1, maxPerDay: 100, unit: "un", gramsPerUnit: 300 },
+    { id: "azeite", foodId: "azeite", label: "Azeite", price: 7, maxPerDay: 30, unit: "ml", gramsPerUnit: 1 },
+    { id: "amendoim", foodId: "amendoim", label: "Amendoim", price: 2.4, maxPerDay: 30 }
+  ];
+
+  const MARKET_INDEX = new Map(MARKET.map((item) => [item.id, item]));
+  const MARKET_SEEDS = [
+    { id: "feijao", gramsPerDay: 100 },
+    { id: "banana", gramsPerDay: 100 },
+    { id: "tomate", gramsPerDay: 100 },
+    { id: "cenoura", gramsPerDay: 100 },
+    { id: "salada", gramsPerDay: 50 },
+    { id: "azeite", gramsPerDay: 10 }
+  ];
+
+  function marketFood(item) {
+    return FOODS.find((food) => food.id === item.foodId) || null;
+  }
+
+  function marketQty(item, grams) {
+    if (item.unit === "ovos") return `${Math.max(1, Math.round(grams / (item.gramsPerUnit || 50)))} ovos`;
+    if (item.unit === "L") return `${nf1(grams / 1000)} L`;
+    if (item.unit === "ml") return `${nf(grams)} ml`;
+    if (item.unit === "un") return `${Math.max(1, nf1(grams / (item.gramsPerUnit || 1)))} un`;
+    return grams >= 1000 ? `${nf1(grams / 1000)} kg` : `${nf(grams)} g`;
+  }
+
   const NUMBER_WORDS = { um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, meio: 0.5, meia: 0.5 };
   const FOOD_INDEX = FOODS.map((food) => ({
     food,
@@ -2136,6 +2217,19 @@ img,svg{display:block}
     toast(`${name} registrado: ${minutes} min · ${intensity}.`);
   }
 
+  function submitBudget(event) {
+    event.preventDefault();
+    if (!state) return;
+    const budget = parseNum($("#budget-value")?.value);
+    if (!(budget >= 10)) {
+      toast("Informe um orçamento de pelo menos R$ 10.");
+      $("#budget-value")?.focus();
+      return;
+    }
+    const days = clamp(Number($("#budget-days")?.value) || 7, 1, 30);
+    renderBudgetResult(planBudget(budget, days));
+  }
+
   function isQuestion(text) {
     const raw = String(text || "").trim();
     if (raw.endsWith("?")) return true;
@@ -2144,7 +2238,7 @@ img,svg{display:block}
 
   const RECORDING = /\b(comi|tomei|bebi|registra|registre|anota|anote|adiciona|adicione|peso|pesando|corri|caminhei|pedalei|nadei|treinei|fiz)\b/;
 
-  const WELCOME = "Oi! Eu sou a Viva. Posso anotar refeições, água, treino e peso. Ex.: “comi 2 ovos e um pão”, “bebi 500 ml de água”, “treinei peito e tríceps médio” ou “peso 78,5”.";
+  const WELCOME = "Oi! Eu sou a Viva. Posso anotar refeições, água, treino e peso, e montar uma lista de compras com orçamento. Ex.: “comi 2 ovos e um pão”, “bebi 500 ml de água”, “treinei peito e tríceps médio”, “tenho R$ 150 para compras” ou “peso 78,5”.";
 
   function aiStoreKey() {
     return `${AI_STORE}:${user?.id || "local"}`;
@@ -2308,6 +2402,173 @@ img,svg{display:block}
     }, { kcal: 0, p: 0, c: 0, f: 0 });
   }
 
+  function basketTotals(gramsById) {
+    const totals = { kcal: 0, p: 0, c: 0, f: 0 };
+    for (const [id, grams] of gramsById) {
+      const item = MARKET_INDEX.get(id);
+      const food = item && marketFood(item);
+      if (!food) continue;
+      const factor = grams / 100;
+      totals.kcal += Number(food.kcal) * factor;
+      totals.p += Number(food.p) * factor;
+      totals.c += Number(food.c) * factor;
+      totals.f += Number(food.f) * factor;
+    }
+    return totals;
+  }
+
+  function planBudget(budget, days = 7) {
+    const totalBudget = Math.max(0, Number(budget) || 0);
+    const period = clamp(Math.round(Number(days) || 7), 1, 30);
+    const target = state?.targets || (state?.profile ? calcTargets(state.profile) : { kcal: 2000, protein: 100 });
+    const targetKcal = Math.max(1, Number(target.kcal) * period);
+    const targetProtein = Math.max(1, Number(target.protein) * period);
+    const gramsById = new Map();
+    let spent = 0;
+
+    const canAdd = (item, amount) => {
+      const current = gramsById.get(item.id) || 0;
+      if (current + amount > item.maxPerDay * period + 0.001) return false;
+      return (amount / 100) * item.price <= totalBudget - spent + 0.001;
+    };
+    const add = (item, amount) => {
+      if (!canAdd(item, amount)) return false;
+      gramsById.set(item.id, (gramsById.get(item.id) || 0) + amount);
+      spent += (amount / 100) * item.price;
+      return true;
+    };
+
+    // Base de variedade: feijão, fruta, salada e gordura entram antes da otimização.
+    const seedCap = totalBudget * 0.35;
+    let seedSpent = 0;
+    for (const seed of MARKET_SEEDS) {
+      const item = MARKET_INDEX.get(seed.id);
+      if (!item) continue;
+      const amount = Math.max(50, Math.round((seed.gramsPerDay * period) / 50) * 50);
+      const cost = (amount / 100) * item.price;
+      if (seedSpent + cost > seedCap + 0.001) continue;
+      if (add(item, amount)) seedSpent += cost;
+    }
+
+    let totals = basketTotals(gramsById);
+    let needProtein = Math.max(0, targetProtein - totals.p);
+    let needKcal = Math.max(0, targetKcal - totals.kcal);
+    const step = 50;
+
+    for (let guard = 0; guard < 800 && (needProtein > 0 || needKcal > 0); guard += 1) {
+      let best = null;
+      for (const item of MARKET) {
+        const food = marketFood(item);
+        if (!food || !canAdd(item, step)) continue;
+        const cost = (step / 100) * item.price;
+        const proteinGain = (Number(food.p) * step) / 100;
+        const kcalGain = (Number(food.kcal) * step) / 100;
+        const proteinScore = needProtein > 0 ? Math.min(proteinGain, needProtein) / needProtein : 0;
+        const kcalScore = needKcal > 0 ? Math.min(kcalGain, needKcal) / needKcal : 0;
+        const score = needProtein > 0 ? proteinScore * 0.7 + kcalScore * 0.3 : kcalScore;
+        const value = score / cost;
+        if (!best || value > best.value) best = { item, proteinGain, kcalGain, value };
+      }
+      if (!best) break;
+      add(best.item, step);
+      needProtein = Math.max(0, needProtein - best.proteinGain);
+      needKcal = Math.max(0, needKcal - best.kcalGain);
+    }
+
+    totals = basketTotals(gramsById);
+    const items = [...gramsById.entries()]
+      .map(([id, grams]) => {
+        const item = MARKET_INDEX.get(id);
+        const food = item && marketFood(item);
+        if (!item || !food || grams <= 0) return null;
+        const factor = grams / 100;
+        return {
+          id,
+          label: item.label,
+          grams,
+          qty: marketQty(item, grams),
+          cost: factor * item.price,
+          kcal: Number(food.kcal) * factor,
+          protein: Number(food.p) * factor
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.cost - a.cost);
+
+    return {
+      budget: totalBudget,
+      days: period,
+      spent,
+      left: Math.max(0, totalBudget - spent),
+      targetKcal,
+      targetProtein,
+      kcal: totals.kcal,
+      protein: totals.p,
+      proteinPct: Math.min(100, Math.round((totals.p / targetProtein) * 100)),
+      kcalPct: Math.min(100, Math.round((totals.kcal / targetKcal) * 100)),
+      items
+    };
+  }
+
+  function budgetAnswer(parsed) {
+    const plan = planBudget(parsed.budget, parsed.days);
+    const period = plan.days === 1 ? "hoje" : `${plan.days} dias`;
+    if (!plan.items.length) {
+      return `Com R$ ${money(plan.budget)} não encontrei uma combinação de compras. Tente um valor maior ou ajuste suas metas.`;
+    }
+    const shown = plan.items.slice(0, 7).map((item) => `${item.label} (${item.qty}) — R$ ${money(item.cost)}`);
+    const more = plan.items.length > shown.length ? `; e mais ${plan.items.length - shown.length} itens` : "";
+    const left = plan.left >= 0.01 ? ` Sobram R$ ${money(plan.left)}.` : "";
+    return `Sugestão de compras para ${period} com R$ ${money(plan.budget)}: ${shown.join("; ")}${more}. Total estimado: R$ ${money(plan.spent)}. Cobre ${plan.proteinPct}% da proteína e ${plan.kcalPct}% das calorias.${left} Valores estimados; confira os preços do mercado.`;
+  }
+
+  function parseBudgetQuestion(text) {
+    const norm = normalize(text);
+    if (!/(comprar|compra|mercado|supermercado|feira|orcamento|cesta|lista de compras)/.test(norm)) return null;
+    let match = norm.match(/\b(?:r\s*)?(\d{1,5}(?:[.,]\d{1,2})?)\s*(?:reais|real|conto|pila)\b/);
+    if (!match) match = norm.match(/\br\s*(\d{1,5}(?:[.,]\d{1,2})?)\b/);
+    if (!match) match = norm.match(/\b(?:tenho|com|gastar|gasto|orcamento(?: de| e)?|apenas|so|somente)\s*(\d{1,5}(?:[.,]\d{1,2})?)\b/);
+    if (!match) return null;
+    const budget = parseNum(match[1]);
+    if (!(budget >= 10 && budget <= 100000)) return null;
+    const daysMatch = norm.match(/\b(\d{1,2})\s*dias?\b/);
+    let days = daysMatch ? Number(daysMatch[1]) : 7;
+    if (/\bhoje\b/.test(norm)) days = 1;
+    if (/\bmes\b/.test(norm)) days = 30;
+    return { budget, days: clamp(days, 1, 30) };
+  }
+
+  function renderBudgetResult(plan) {
+    const result = $("#budget-result");
+    if (!result) return;
+    result.innerHTML = "";
+    if (!plan.items.length) {
+      result.append(h("p", { class: "targets-note" }, "Não encontrei uma combinação para esse valor. Tente um orçamento maior."));
+      return;
+    }
+    result.append(
+      h("div", { class: "budget-summary" },
+        h("strong", {}, `R$ ${money(plan.spent)}`),
+        h("span", {}, `de R$ ${money(plan.budget)} · ${plan.days} dia(s)`)
+      ),
+      h("ul", { class: "budget-list" },
+        plan.items.map((item) => h("li", { class: "budget-item" },
+          h("div", { class: "b-main" },
+            h("strong", {}, item.label),
+            h("small", {}, `${item.qty} · ${nf(item.protein)} g de proteína · ${nf(item.kcal)} kcal`)
+          ),
+          h("span", { class: "b-price" }, `R$ ${money(item.cost)}`)
+        ))
+      )
+    );
+    const reached = plan.proteinPct >= 100 && plan.kcalPct >= 100;
+    const note = reached
+      ? "A cesta atinge a meta de proteína e de calorias do período."
+      : `Cobre ${plan.proteinPct}% da proteína e ${plan.kcalPct}% das calorias do período.`;
+    const left = plan.left >= 0.01 ? ` Sobram R$ ${money(plan.left)}.` : "";
+    result.append(h("p", { class: "targets-note" }, `${note}${left} Valores estimados; confira os preços do mercado.`));
+  }
+
   function localAnswer(norm) {
     if (!state) return null;
     const totals = dayTotals();
@@ -2350,7 +2611,7 @@ img,svg{display:block}
       return `Hoje: ${nf(totals.kcal)} de ${nf(budget)} kcal, ${nf(totals.protein)} de ${nf(target.protein)} g de proteína, ${nf(water)} de ${nf(waterTarget)} ml de água e ${nf(minutes)} min de atividade.`;
     }
     if (/^(oi|ola|bom dia|boa tarde|boa noite)\b/.test(norm)) {
-      return `Oi${state.profile.name ? `, ${state.profile.name}` : ""}! Posso anotar refeições, água, atividade e peso. Também respondo quanto falta de proteína, calorias, água e uma sugestão de jantar.`;
+      return `Oi${state.profile.name ? `, ${state.profile.name}` : ""}! Posso anotar refeições, água, atividade e peso. Também respondo quanto falta de proteína, calorias, água, uma sugestão de jantar e uma lista de compras com orçamento.`;
     }
     return null;
   }
@@ -2358,6 +2619,11 @@ img,svg{display:block}
   async function handleMessage(text) {
     const norm = normalize(text);
     const question = isQuestion(text);
+    const shopping = parseBudgetQuestion(text);
+    if (shopping) return budgetAnswer(shopping);
+    if (/(comprar|compra|mercado|supermercado|feira|cesta|lista de compras)/.test(norm)) {
+      return "Posso montar uma cesta de compras para você. Quanto você tem para gastar e para quantos dias? Ex.: “tenho R$ 150 para 7 dias de compras”.";
+    }
     if (question && !RECORDING.test(norm)) {
       const local = localAnswer(norm);
       if (!state.profile.aiEnabled) {
@@ -3552,6 +3818,8 @@ img,svg{display:block}
     if (simAdd) simAdd.addEventListener("click", addSimulatedActivity);
     const workoutForm = $("#workout-form");
     if (workoutForm) workoutForm.addEventListener("submit", addWorkout);
+    const budgetForm = $("#budget-form");
+    if (budgetForm) budgetForm.addEventListener("submit", submitBudget);
     const homeWorkoutAdd = $("#home-workout-add");
     if (homeWorkoutAdd) homeWorkoutAdd.addEventListener("click", () => setView("atividades"));
     $("#photo-input")?.addEventListener("change", handlePhotoFile);

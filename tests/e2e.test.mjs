@@ -421,6 +421,38 @@ await check("4h. registra treino com músculos e intensidade na tela principal",
   await page.close();
 });
 
+await check("4i. sugere compras dentro do orçamento e responde no assistente", async () => {
+  await resetAll();
+  await seed(demoState());
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await goView(page, "atividades");
+  await page.$eval("#budget-value", (el) => { el.value = "150"; });
+  await page.$eval("#budget-form", (form) => form.requestSubmit());
+  await waitFor(async () => (await textOf(page, "#budget-result")).includes("R$"));
+  const result = await textOf(page, "#budget-result");
+  assert(result.includes("proteína") && result.includes("calorias"), "resultado deveria mostrar cobertura das metas");
+  const itemCount = await page.$$eval("#budget-result .budget-item", (items) => items.length);
+  assert(itemCount >= 4, `esperava uma cesta com vários itens, recebi ${itemCount}`);
+  assert(/Frango|Ovos|Arroz|Feijão/.test(result), "cesta deveria ter alimentos básicos");
+
+  await send(page, "tenho apenas 150 reais, o que poderia comprar para chegar o mais perto da meta?");
+  await waitChat(page, "Sugestão de compras");
+  const chat = await chatText(page);
+  assert(chat.includes("R$ 150,00"), "resposta deveria citar o orçamento");
+  assert(chat.includes("proteína") && chat.includes("calorias"), "resposta deveria citar as metas");
+
+  await send(page, "o que posso comprar?");
+  await waitChat(page, "Quanto você tem para gastar");
+  await page.$eval("#budget-value", (el) => { el.value = "30"; });
+  await page.$eval("#budget-form", (form) => form.requestSubmit());
+  await waitFor(async () => (await textOf(page, "#budget-result")).includes("Cobre"));
+  const low = await textOf(page, "#budget-result");
+  assert(low.includes("Cobre") && low.includes("%"), "orçamento baixo deveria mostrar cobertura parcial");
+  await page.close();
+});
+
 await check("4e. sem dados públicos, não inventa valores", async () => {
   await resetAll();
   await setConfig({ foodMode: "notfound" });

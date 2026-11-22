@@ -26,7 +26,7 @@ Seis abas, iguais às do app original e do protótipo:
 - **Início**: resumo de kcal e macros, atalhos, água, peso e hábitos da semana.
 - **Assistente**: conversa e registro por texto.
 - **Alimentação** (rótulo curto **Refeições** no celular): refeições agrupadas por café da manhã, almoço, lanche e jantar, com resumo do dia e sugestão.
-- **Atividades**: minutos dos últimos 7 dias, atividades de hoje, registro de treino por músculos/intensidade/duração, simulador de gasto e registro pelo assistente.
+- **Atividades**: minutos dos últimos 7 dias, atividades de hoje, registro de treino por músculos/intensidade/duração, simulador de gasto, sugestão de compras por orçamento e registro pelo assistente.
 - **Evolução**: dashboard completo, últimos 14 dias, médias e histórico de peso. O dashboard pode ser impresso ou salvo em PDF.
 - **Perfil**: metas, IA incluída, campo opcional de chave própria, exportação e exclusão.
 
@@ -37,15 +37,15 @@ Testes:
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
 - `node tests/ai-proxy.test.mjs`: 9 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter e recusa de foto no Groq.
 - `node tests/food-api.test.mjs`: 10 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g e ausência de dados.
-- `node tests/e2e.test.mjs`: 30 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 31 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as cinco suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 188.407 bytes crus, 48.431 bytes em gzip e 41.029 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 201.896 bytes crus, 51.607 bytes em gzip e 43.685 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.10.1`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.11.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -115,6 +115,16 @@ O treino também pode ser anotado pelo assistente:
 Cada treino é salvo como uma atividade de musculação, com MET 3,5 (leve), 6 (médio) ou 7,5 (intenso). O cartão **Treino de hoje** na tela principal mostra o nome do treino e a intensidade. Os campos ficam no mesmo JSON do diário; não é necessária uma migração nova.
 
 O Google não oferece uma API pública gratuita de nutrição estruturada; por isso a busca externa usa o Open Food Facts. Se você tiver uma API de busca própria, ela pode ser adicionada em `api/food.mjs`.
+
+## Compras com orçamento
+
+Na aba **Atividades**, o cartão **Compras com orçamento** monta uma cesta para 1, 7, 14 ou 30 dias. Exemplo: com R$ 150 para 7 dias, o app calcula uma combinação de arroz, feijão, ovos, frango, frutas, verduras e outros itens para chegar o mais perto possível das metas de proteína e calorias.
+
+- Os preços são **médias estimadas por 100 g** (nov/2026) e variam por região e mercado. O app não consulta preços ao vivo.
+- O cálculo é local: nenhum dado de orçamento ou compra é enviado à IA.
+- A cesta mostra quantidade, custo estimado, proteína e calorias por item, além do total e da sobra.
+- Também funciona pelo assistente: “tenho apenas R$ 150, o que poderia comprar para chegar o mais perto da meta?”.
+- Não requer migração nova.
 
 ## Decisões
 

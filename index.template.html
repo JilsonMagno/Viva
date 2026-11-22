@@ -267,6 +267,17 @@ img,svg{display:block}
 .row .r-del{border:0;background:none;color:var(--muted);padding:6px;border-radius:8px;line-height:0}
 .row .r-del:hover{color:var(--danger);background:var(--surface-2)}
 .workout-intensity{font-size:.74rem;font-weight:700;color:var(--muted);white-space:nowrap;flex:none}
+.budget-result{display:grid;gap:12px;margin-top:14px}
+.budget-summary{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line)}
+.budget-summary strong{font-size:1.12rem;font-variant-numeric:tabular-nums}
+.budget-summary span{font-size:.78rem;color:var(--muted);text-align:right}
+.budget-list{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.budget-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.budget-item:last-child{border-bottom:0}
+.b-main{display:grid;gap:2px;min-width:0}
+.b-main strong{font-size:.9rem}
+.b-main small{color:var(--muted);font-size:.75rem;line-height:1.35}
+.b-price{font-weight:750;font-size:.88rem;white-space:nowrap;font-variant-numeric:tabular-nums}
 .meal-group{display:grid;gap:2px;min-width:0}
 .meal-group + .meal-group{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
 .meal-group h3{font-size:.72rem;font-weight:750;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 2px}
@@ -642,6 +653,27 @@ img,svg{display:block}
                 </div>
                 <button class="btn btn-primary btn-block" type="submit" id="workout-submit">Registrar treino</button>
               </form>
+            </article>
+            <article class="card" aria-labelledby="budget-title">
+              <header class="card-head"><h2 id="budget-title">Compras com orçamento</h2><span class="sub">Valores estimados</span></header>
+              <p class="targets-note">Informe quanto você tem para a semana. A Viva monta uma cesta que chega o mais perto possível das metas de proteína e calorias.</p>
+              <form id="budget-form" class="stack" style="margin-top:12px;gap:12px">
+                <div class="grid-2">
+                  <label class="field" for="budget-value">Orçamento (R$)
+                    <input id="budget-value" type="number" min="10" max="100000" step="10" value="150" inputmode="decimal">
+                  </label>
+                  <label class="field" for="budget-days">Período
+                    <select id="budget-days">
+                      <option value="1">1 dia</option>
+                      <option value="7" selected>7 dias</option>
+                      <option value="14">14 dias</option>
+                      <option value="30">30 dias</option>
+                    </select>
+                  </label>
+                </div>
+                <button class="btn btn-primary btn-block" type="submit" id="budget-submit">Sugerir compras</button>
+              </form>
+              <div id="budget-result" class="budget-result" aria-live="polite"></div>
             </article>
             <article class="card" aria-labelledby="sim-title">
               <header class="card-head"><h2 id="sim-title">Simulador de atividade</h2><span class="sub" id="sim-kcal" aria-live="polite">≈ 0 kcal</span></header>
