@@ -630,6 +630,7 @@ await check("8. pergunta aberta envia perfil, metas e histórico do usuário", a
   const body = state.aiBodies[0];
   equal(body.question, question, "campo question");
   equal(body.message, question, "campo message");
+  equal(body.search, true, "pesquisa web ligada por padrão");
   assert(body.context && typeof body.context === "object", "contexto deve ser um objeto");
   equal(body.context.profile.name, "Ana", "nome no contexto");
   equal(body.context.profile.goal, "lose", "objetivo no contexto");
@@ -645,7 +646,7 @@ await check("8. pergunta aberta envia perfil, metas e histórico do usuário", a
   equal(body.context.weights.length, 1, "histórico de peso no contexto");
   assert(Array.isArray(body.context.dailyHistory) && body.context.dailyHistory.length === 1, "histórico diário no contexto");
   assert(JSON.stringify(body.context).length <= 20000, "contexto deve respeitar o limite");
-  equal(JSON.stringify(Object.keys(body)), JSON.stringify(["question", "message", "context"]), "corpo inesperado");
+  equal(JSON.stringify(Object.keys(body)), JSON.stringify(["question", "message", "context", "search"]), "corpo inesperado");
   const row = await rowFor(USER_A.id);
   equal(Object.keys(row.data.days).length, 1, "pergunta não deveria criar outro dia");
   await setConfig({ aiMode: "reply", aiAnswer: "Resposta no formato reply." });
@@ -655,6 +656,47 @@ await check("8. pergunta aberta envia perfil, metas e histórico do usuário", a
   equal(replyState.aiCalls, 2, "chamadas à IA com reply");
   equal(replyState.aiBodies[1].message, "e no formato reply?", "message no segundo envio");
   assert(replyState.aiBodies[1].context.profile.name === "Ana", "contexto no segundo envio");
+  await page.close();
+});
+
+await check("8b. texto livre, sem pergunta, também vai para a IA", async () => {
+  await resetAll();
+  await seed(demoState({ days: {} }));
+  await setConfig({ aiAnswer: "A creatina é um suplemento; converse com um profissional antes de usar." });
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "quero comprar creatina");
+  await waitChat(page, "A creatina é um suplemento");
+  const state = await getState();
+  equal(state.aiCalls, 1, "texto livre deveria chamar a IA");
+  equal(state.aiBodies[0].search, true, "pesquisa ligada");
+  assert(!(await chatText(page)).includes("Quanto você tem para gastar"), "não deveria cair no orçamento");
+  await page.$eval("#chat-search", (el) => { el.checked = false; });
+  await send(page, "e sem pesquisa?");
+  const off = await waitFor(async () => {
+    const current = await getState();
+    return current.aiCalls === 2 ? current : null;
+  });
+  equal(off.aiBodies[1].search, false, "pesquisa desligada no segundo envio");
+  await page.close();
+});
+
+await check("8c. resposta de pesquisa mostra as fontes consultadas", async () => {
+  await resetAll();
+  await seed(demoState());
+  await setConfig({
+    aiEndpoint: "/api/ai",
+    aiServer: { configured: true, provider: "openai", model: "gpt-4o-mini", vision: true },
+    aiSources: [{ title: "Creatina", url: "https://pt.wikipedia.org/wiki/Creatina", source: "Wikipedia" }]
+  });
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "pesquise sobre creatina");
+  await waitChat(page, "Fontes consultadas");
+  const chat = await chatText(page);
+  assert(chat.includes("Creatina") && chat.includes("https://pt.wikipedia.org/wiki/Creatina"), "fonte deveria aparecer no chat");
   await page.close();
 });
 

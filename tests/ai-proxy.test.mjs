@@ -42,6 +42,22 @@ globalThis.fetch = async (url, options = {}) => {
     return { ok: true, json: async () => ({ id: "user-test" }) };
   }
   calls.push({ url: target, options, body: options.body ? JSON.parse(options.body) : null });
+  if (target.includes("pt.wikipedia.org/w/api.php")) {
+    return { ok: true, json: async () => ({ query: { search: [{ title: "Creatina", snippet: "Creatina é um composto..." }] } }) };
+  }
+  if (target.includes("pt.wikipedia.org/api/rest_v1/page/summary/Creatina")) {
+    return {
+      ok: true,
+      json: async () => ({
+        title: "Creatina",
+        extract: "Creatina é um composto usado como suplemento.",
+        content_urls: { desktop: { page: "https://pt.wikipedia.org/wiki/Creatina" } }
+      })
+    };
+  }
+  if (target.includes("eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch")) {
+    return { ok: true, json: async () => ({ esearchresult: { idlist: [] } }) };
+  }
   if (target.includes("generativelanguage.googleapis.com")) {
     return {
       ok: true,
@@ -132,6 +148,44 @@ await check("OpenRouter usa o modelo gratuito com visão", async () => {
   assert(res.statusCode === 200, `status ${res.statusCode}`);
   assert(calls[0].url.includes("openrouter.ai"), "provedor OpenRouter");
   assert(calls[0].body.model === "openrouter/free", "modelo gratuito OpenRouter");
+});
+
+await check("pesquisa web anexa fontes e envia ao provedor", async () => {
+  calls.length = 0;
+  const res = response();
+  await handler(request({
+    question: "pesquise sobre creatina",
+    apiKey: "sk-user",
+    provider: "openai",
+    search: true,
+    context: { profile: { name: "Ana" } }
+  }), res);
+  assert(res.statusCode === 200, `status ${res.statusCode}`);
+  assert(res.body.answer === "resposta de teste", "resposta");
+  assert(res.body.sources.length === 1, "uma fonte");
+  assert(res.body.sources[0].url === "https://pt.wikipedia.org/wiki/Creatina", "url da fonte");
+  const providerCall = calls.find((call) => call.url.includes("api.openai.com"));
+  assert(providerCall, "chamada ao provedor");
+  const content = providerCall.body.messages[1].content;
+  assert(content.includes("Fontes da web"), "bloco de fontes");
+  assert(content.includes("Creatina é um composto usado como suplemento."), "resumo da fonte");
+});
+
+await check("pergunta pessoal não dispara pesquisa web", async () => {
+  calls.length = 0;
+  const res = response();
+  await handler(request({
+    question: "quantas calorias comi hoje?",
+    apiKey: "sk-user",
+    provider: "openai",
+    search: true,
+    context: { summary: { todayKcal: 1200 } }
+  }), res);
+  assert(res.statusCode === 200, `status ${res.statusCode}`);
+  assert(res.body.sources.length === 0, "não deveria ter fontes");
+  assert(!calls.some((call) => call.url.includes("wikipedia.org")), "não deveria consultar Wikipedia");
+  const providerCall = calls.find((call) => call.url.includes("api.openai.com"));
+  assert(!providerCall.body.messages[1].content.includes("Fontes da web"), "sem bloco de fontes");
 });
 
 await check("contexto do usuário é repassado ao provedor", async () => {

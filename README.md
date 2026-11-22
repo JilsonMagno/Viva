@@ -10,7 +10,7 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 - Primeiro acesso sem dados de exemplo: você informa idade, altura, peso e objetivo, e a Viva calcula as metas iniciais.
 - Cada conta lê e grava só a própria linha no banco (RLS).
 - Registros pelo assistente (refeições, água, atividade e peso) são salvos na conta.
-- Perguntas vão à IA incluída no app quando o dono configura a chave no servidor. A IA recebe o perfil, as metas, o dia atual, os últimos dias detalhados, o resumo de todo o histórico, o peso e as últimas mensagens para personalizar a resposta. O usuário pode, opcionalmente, salvar a própria chave (OpenAI, Gemini, Groq ou OpenRouter) em Perfil; ela fica só no navegador e tem prioridade. Sem nenhuma chave, o assistente local responde sobre proteína, calorias, água, resumo e sugestão de jantar.
+- Chat livre com IA: perguntas abertas, texto sem formato de comando e pedidos de pesquisa vão para a IA, não só para respostas programadas. A IA recebe o perfil, as metas, o dia atual, os últimos dias detalhados, o resumo de todo o histórico, o peso e as últimas mensagens. Com a pesquisa ligada, consulta Wikipedia e PubMed (ou Tavily, se configurado) e mostra as fontes. O usuário pode, opcionalmente, salvar a própria chave (OpenAI, Gemini, Groq ou OpenRouter) em Perfil; ela fica só no navegador e tem prioridade. Sem nenhuma chave, o assistente local responde sobre proteína, calorias, água, resumo e sugestão de jantar.
 - Foto do prato: a IA com visão estima alimentos, porções e kcal; o usuário confere e adiciona ao diário.
 - Dashboard completo em Evolução: perfil, metas, hoje, médias de 7 e 14 dias, peso, alimentos mais registrados e histórico recente, com impressão/PDF.
 - Exportar os dados em JSON e apagar tudo, com confirmação em dois toques.
@@ -24,7 +24,7 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 Seis abas, iguais às do app original e do protótipo:
 
 - **Início**: resumo de kcal e macros, atalhos, água, peso e hábitos da semana.
-- **Assistente**: conversa e registro por texto.
+- **Assistente**: conversa livre com IA, pesquisa na web, fontes citadas e registro por texto.
 - **Alimentação** (rótulo curto **Refeições** no celular): refeições agrupadas por café da manhã, almoço, lanche e jantar, com resumo do dia, sugestão e edição de quantidade ou exclusão de cada alimento.
 - **Atividades**: minutos dos últimos 7 dias, atividades de hoje, registro de treino por músculos/intensidade/duração, simulador de gasto, sugestão de compras por orçamento e registro pelo assistente.
 - **Evolução**: dashboard completo, últimos 14 dias, médias e histórico de peso. O dashboard pode ser impresso ou salvo em PDF.
@@ -35,17 +35,17 @@ Os IDs internos antigos (`hoje`, `viva`, `diario`) foram mantidos para não queb
 Testes:
 - `node tests/rls.test.mjs`: 15 verificações da migração e das regras de acesso, em Postgres real (PGlite), incluindo um usuário anônimo.
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
-- `node tests/ai-proxy.test.mjs`: 10 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter, contexto do usuário e recusa de foto no Groq.
+- `node tests/ai-proxy.test.mjs`: 12 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter, contexto do usuário, pesquisa web, pergunta pessoal sem pesquisa e recusa de foto no Groq.
 - `node tests/food-api.test.mjs`: 10 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g e ausência de dados.
-- `node tests/e2e.test.mjs`: 32 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 34 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as cinco suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 214.230 bytes crus, 54.458 bytes em gzip e 45.843 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 216.458 bytes crus, 55.155 bytes em gzip e 46.426 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.13.0`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.14.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -130,6 +130,18 @@ Com a IA ligada, cada pergunta envia ao provedor:
 
 O contexto não inclui token de sessão, chave de IA, senha ou e-mail. O limite é de 20.000 caracteres; se o histórico for maior, os itens mais antigos são cortados e o contexto é marcado com `meta.truncated`. Com a IA desligada, nenhum dado do app é enviado.
 
+## Chat com pesquisa
+
+O campo do assistente aceita texto livre. Se a IA estiver ligada, o app manda a mensagem para a IA mesmo quando ela não parece uma pergunta ou um comando de registro. Exemplos: “quero comprar creatina”, “me fale sobre jejum intermitente” e “pesquise se whey faz mal”.
+
+O interruptor **Pesquisar na web** fica ligado por padrão. Quando ligado, o proxy:
+
+1. consulta o **Tavily**, se `TAVILY_API_KEY` estiver configurada; senão usa **Wikipedia** e **PubMed**;
+2. anexa até 5 fontes ao prompt, com título, link e trecho;
+3. pede à IA para citar as fontes e não inventar dados.
+
+Perguntas sobre os seus próprios dados (“quantas calorias comi hoje?”, “quanto falta de proteína?”) não disparam pesquisa: elas usam o contexto do app. A resposta mostra uma seção **Fontes consultadas** com os links. Se a pesquisa falhar, a IA ainda responde com o contexto e sinaliza a incerteza.
+
 ## Editar refeição
 
 Na aba **Alimentação**, cada refeição tem um botão de edição (lápis). Ele abre um painel com todos os alimentos da refeição. Em cada alimento, você pode:
@@ -153,7 +165,7 @@ Na aba **Atividades**, o cartão **Compras com orçamento** monta uma cesta para
 ## Decisões
 
 - **Banco e login: Supabase.** Uma linha `jsonb` por conta. É simples e suficiente para duas pessoas. Separar em tabelas por tipo de registro fica para a Fase 3.
-- **IA: chave do dono no servidor por padrão; chave própria opcional.** O Vercel guarda `AI_API_KEY`; o navegador nunca recebe essa chave. O app chama `/api/ai`, que valida o JWT do Supabase, aplica limite de 30 perguntas/min por usuário e repassa a pergunta ao provedor. Quem preferir pode salvar a própria chave em Perfil; ela fica no `localStorage` daquele navegador e tem prioridade sobre a chave do servidor. Com a IA ligada, o provedor recebe a pergunta, o contexto de saúde descrito acima e, quando o usuário pede, a foto do prato. Sem a IA, os dados ficam só no Supabase. Nomes de alimentos fora da tabela são enviados ao Open Food Facts para consulta; os valores ficam no seu diário no Supabase.
+- **IA: chave do dono no servidor por padrão; chave própria opcional.** O Vercel guarda `AI_API_KEY`; o navegador nunca recebe essa chave. O app chama `/api/ai`, que valida o JWT do Supabase, aplica limite de 30 perguntas/min por usuário e repassa a pergunta ao provedor. Quem preferir pode salvar a própria chave em Perfil; ela fica no `localStorage` daquele navegador e tem prioridade sobre a chave do servidor. Com a IA ligada, o provedor recebe a pergunta, o contexto de saúde descrito acima e, quando o usuário pede, a foto do prato. Com a pesquisa ligada, a pergunta também vai para Wikipedia/PubMed ou para o Tavily, se configurado. Sem a IA, os dados ficam só no Supabase. Nomes de alimentos fora da tabela são enviados ao Open Food Facts para consulta; os valores ficam no seu diário no Supabase.
 - **Dados de saúde (LGPD):** cada conta vê só os próprios dados. O app tem exportação e exclusão. O texto de consentimento deve passar por revisão jurídica antes de o app ser usado por mais pessoas.
 - **Fora desta versão:** lembretes, compartilhamento entre contas e exclusão da conta de login (o app apaga os dados, mas o usuário de autenticação continua existindo no Supabase).
 
@@ -164,7 +176,7 @@ O cartão *Assistente com IA* fica em Perfil. Se o dono configurou `AI_API_KEY`,
 Configuração da IA do servidor, uma vez:
 
 1. Crie uma chave em OpenAI, Groq, Google Gemini ou OpenRouter.
-2. No Vercel, em *Settings > Environment Variables*, adicione `AI_API_KEY` em *Production*. Opcional: `AI_PROVIDER` (`openai`, `groq`, `gemini`, `openrouter`), `AI_MODEL` e `AI_VISION_MODEL`.
+2. No Vercel, em *Settings > Environment Variables*, adicione `AI_API_KEY` em *Production*. Opcional: `AI_PROVIDER` (`openai`, `groq`, `gemini`, `openrouter`), `AI_MODEL`, `AI_VISION_MODEL` e `TAVILY_API_KEY` (pesquisa web com mais resultados; sem ela, o app usa Wikipedia e PubMed).
 3. Faça um novo deploy (`npx vercel --prod`).
 4. Abra Perfil: o cartão mostra “IA incluída no app”. Ligue a permissão uma vez.
 
@@ -177,7 +189,7 @@ Sem `AI_API_KEY`, o usuário ainda pode salvar a própria chave. Sem nenhuma cha
 - “o que posso jantar?”
 - “estou com dor/cansaço” (orienta procurar um profissional)
 
-Privacidade: com a IA ligada, a pergunta, o contexto de saúde (perfil, metas, refeições, água, atividades, peso e histórico) e, quando o usuário envia uma foto, a imagem do prato vão ao provedor. Tokens, chaves, senhas e e-mail não são enviados. Com a IA desligada, nada disso sai do app. Limite: 30 perguntas/min por usuário. O dono paga o uso da chave do servidor; quem usa a própria chave paga o próprio provedor. Acompanhe o gasto no provedor.
+Privacidade: com a IA ligada, a pergunta, o contexto de saúde (perfil, metas, refeições, água, atividades, peso e histórico) e, quando o usuário envia uma foto, a imagem do prato vão ao provedor. Com a pesquisa ligada, a pergunta também vai para Wikipedia/PubMed ou para o Tavily, se configurado. Tokens, chaves, senhas e e-mail não são enviados. Com a IA desligada, nada disso sai do app. Limite: 30 perguntas/min por usuário. O dono paga o uso da chave do servidor; quem usa a própria chave paga o próprio provedor. Acompanhe o gasto no provedor.
 
 Provedores e modelos padrão:
 
@@ -267,7 +279,8 @@ app.js                           lógica do app (fonte)
 index.template.html              markup e CSS (fonte)
 build.cjs                        gera index.html a partir do template + app.js
 config.js                        URL e chave pública do Supabase; endpoint /api/ai
-api/ai.mjs                       proxy da IA; valida o JWT, usa chave do servidor ou do usuário e aceita fotos (visão)
+api/ai.mjs                       proxy da IA; valida o JWT, usa chave do servidor ou do usuário, aceita fotos (visão) e anexa pesquisa web
+api/research.mjs                 pesquisa Tavily (opcional), Wikipedia e PubMed, com cache e limite de resultados
 api/food.mjs                     busca nomes fora da tabela no Open Food Facts, com valores por 100 g
 manifest.webmanifest             instalação no celular
 icon.svg, icon-192.png, icon-512.png

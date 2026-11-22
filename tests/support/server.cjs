@@ -55,6 +55,7 @@ const state = {
   }),
   aiEndpoint: "",
   aiServer: null,
+  aiSources: [],
   lastAI: null,
   foodMode: "ok",
   foodResult: {
@@ -98,6 +99,7 @@ function reset() {
   });
   state.aiEndpoint = "";
   state.aiServer = null;
+  state.aiSources = [];
   state.lastAI = null;
   state.foodMode = "ok";
   state.foodCalls = 0;
@@ -238,7 +240,10 @@ const server = http.createServer(async (req, res) => {
       hasImage: !!body.image,
       imagePrefix: body.image ? String(body.image).slice(0, 30) : ""
     };
-    json(res, { answer: body.image ? state.aiVisionAnswer : (state.aiServer ? "Resposta do servidor de teste." : "Resposta BYOK de teste.") });
+    json(res, {
+      answer: body.image ? state.aiVisionAnswer : (state.aiServer ? "Resposta do servidor de teste." : "Resposta BYOK de teste."),
+      sources: body.image ? [] : state.aiSources
+    });
     return;
   }
 
@@ -257,6 +262,7 @@ const server = http.createServer(async (req, res) => {
     if (typeof body.aiAnswer === "string") state.aiAnswer = body.aiAnswer;
     if (typeof body.aiEndpoint === "string") state.aiEndpoint = body.aiEndpoint;
     if ("aiServer" in body) state.aiServer = body.aiServer;
+    if (Array.isArray(body.aiSources)) state.aiSources = body.aiSources;
     json(res, { ok: true });
     return;
   }

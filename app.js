@@ -1373,7 +1373,7 @@
 
   const RECORDING = /\b(comi|tomei|bebi|registra|registre|anota|anote|adiciona|adicione|peso|pesando|corri|caminhei|pedalei|nadei|treinei|fiz)\b/;
 
-  const WELCOME = "Oi! Eu sou a Viva. Posso anotar refeições, água, treino e peso, e montar uma lista de compras com orçamento. Ex.: “comi 2 ovos e um pão”, “bebi 500 ml de água”, “treinei peito e tríceps médio”, “tenho R$ 150 para compras” ou “peso 78,5”.";
+  const WELCOME = "Oi! Eu sou a Viva. Posso anotar refeições, água, treino e peso, responder perguntas com pesquisa na web quando a IA está ligada e montar uma lista de compras com orçamento. Ex.: “comi 2 ovos e um pão”, “bebi 500 ml de água”, “pesquise sobre creatina” ou “tenho R$ 150 para compras”.";
 
   function aiStoreKey() {
     return `${AI_STORE}:${user?.id || "local"}`;
@@ -1608,8 +1608,17 @@
     return fitAIContext(context);
   }
 
+  function answerWithSources(answer, sources) {
+    const list = Array.isArray(sources)
+      ? sources.filter((source) => source && source.title && /^https?:\/\//i.test(source.url || "")).slice(0, 5)
+      : [];
+    if (!list.length) return answer;
+    return `${answer}\n\nFontes consultadas:\n${list.map((source, index) => `[${index + 1}] ${source.title} — ${source.url}`).join("\n")}`;
+  }
+
   async function askAI(question, options = {}) {
     if (!navigator.onLine) return "Você está offline. Tente de novo quando a conexão voltar.";
+    const wantsSearch = options.search !== undefined ? !!options.search : !options.image && $("#chat-search")?.checked !== false;
 
     if (AI_ENDPOINT) {
       let config = activeAIConfig();
@@ -1633,7 +1642,7 @@
         }
         const provider = config.provider || "openai";
         const model = config.model || "";
-        const payload = { question, message: question, context: aiContext(question), provider, model };
+        const payload = { question, message: question, context: aiContext(question), provider, model, search: wantsSearch };
         if (config.source === "own") payload.apiKey = config.key;
         if (options.image) payload.image = options.image;
         const res = await fetch(AI_ENDPOINT, {
@@ -1656,7 +1665,7 @@
           if (data?.error === "provider_error" && data?.message) return `A IA recusou: ${data.message}`;
           return "Não consegui falar com a IA agora. Tente de novo em instantes.";
         }
-        return data?.answer || data?.reply || "A IA não retornou uma resposta.";
+        return answerWithSources(data?.answer || data?.reply || "A IA não retornou uma resposta.", data?.sources);
       } catch {
         return "Não consegui falar com a IA agora. Verifique a conexão.";
       }
@@ -1667,7 +1676,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // Compatível com { message, context } -> { reply } e com { question } -> { answer }.
-        body: JSON.stringify({ question, message: question, context: aiContext(question) })
+        body: JSON.stringify({ question, message: question, context: aiContext(question), search: wantsSearch })
       });
       if (res.status === 429) return "Muitas perguntas em pouco tempo. Espere um minuto e tente de novo.";
       if (res.status === 503) return "A IA ainda não está configurada no servidor. Avise quem publicou o app.";
@@ -1677,7 +1686,7 @@
       }
       if (!res.ok) return "Não consegui falar com a IA agora. Tente de novo em instantes.";
       const data = await res.json().catch(() => null);
-      return (data && (data.answer || data.reply)) || "A IA não retornou uma resposta.";
+      return answerWithSources((data && (data.answer || data.reply)) || "A IA não retornou uma resposta.", data?.sources);
     } catch {
       return "Não consegui falar com a IA agora. Verifique a conexão.";
     }
@@ -1924,7 +1933,7 @@
     const question = isQuestion(text);
     const shopping = parseBudgetQuestion(text);
     if (shopping) return budgetAnswer(shopping);
-    if (/(comprar|compra|mercado|supermercado|feira|cesta|lista de compras)/.test(norm)) {
+    if (/(o que posso comprar|o que comprar|lista de compras|cesta de compras|cesta básica|sugestão de compras|sugestao de compras|montar.*compra)/.test(norm)) {
       return "Posso montar uma cesta de compras para você. Quanto você tem para gastar e para quantos dias? Ex.: “tenho R$ 150 para 7 dias de compras”.";
     }
     if (question && !RECORDING.test(norm)) {
@@ -1959,6 +1968,12 @@
       const label = entry.workout ? `${entry.workout} (${displayIntensity(entry.intensity)})` : entry.name;
       return `${label} por ${entry.minutes} min: cerca de ${nf(entry.kcal)} kcal gastas. Bom movimento!`;
     }
+    const researchIntent = /\b(pesquise|pesquisar|busque|buscar|procure|procurar|explique|explica|me fale|fale sobre|conte sobre|o que é|o que e|benefícios|beneficios|riscos|segurança|seguranca|creatina|suplemento|vitamina|remédio|remedio|emagrec|ganhar massa|hipertrofia|dieta|jejum|low carb|calorias|proteína|proteina|sono|exercício|exercicio|academia)\b/.test(norm);
+    const shoppingIntent = /\b(comprar|compra|mercado|supermercado|preço|preco|onde encontrar)\b/.test(norm);
+    if ((researchIntent || shoppingIntent) && !RECORDING.test(norm)) {
+      if (!state.profile.aiEnabled) return "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso anotar refeições, água, atividade e peso.";
+      return askAI(text);
+    }
     const meal = await parseMeal(text);
     if (meal && meal.items.length) {
       const saved = addMeal(meal.items, meal.label);
@@ -1979,6 +1994,7 @@
       if (!state.profile.aiEnabled) return "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso anotar refeições, água, atividade e peso.";
       return askAI(text);
     }
+    if (state.profile.aiEnabled) return askAI(text);
     return "Ainda não entendi. Tente “comi 2 ovos e um pão”, “bebi 500 ml de água”, “corri 30 min” ou “peso 78,5”.";
   }
 
@@ -1999,7 +2015,9 @@
   }
 
   function appendThinking() {
-    const node = h("div", { class: "msg viva thinking", "aria-label": "Viva está pensando" }, h("i"), h("i"), h("i"));
+    const searching = state?.profile?.aiEnabled && $("#chat-search")?.checked;
+    const label = searching ? "Viva está pesquisando e pensando" : "Viva está pensando";
+    const node = h("div", { class: "msg viva thinking", "aria-label": label }, h("i"), h("i"), h("i"));
     $("#chat-log").append(node);
     $("#chat-log").scrollTop = $("#chat-log").scrollHeight;
     return node;
@@ -2020,7 +2038,7 @@
       : "IA desligada — anotações e respostas locais";
     $("#ai-dot").dataset.on = String(ai);
     $("#chat-note").textContent = ai
-      ? `A pergunta, seu perfil, metas, refeições, água, atividades, peso e histórico vão para ${label}. Nomes fora da tabela são buscados no Open Food Facts. Seus registros ficam no Supabase.`
+      ? `A pergunta, seu perfil, metas, refeições, água, atividades, peso e histórico vão para ${label}. Com a pesquisa ligada, a pergunta também consulta Wikipedia e PubMed. Seus registros ficam no Supabase.`
       : "Seus registros ficam no Supabase. Nomes de alimentos fora da tabela são buscados no Open Food Facts.";
   }
 
