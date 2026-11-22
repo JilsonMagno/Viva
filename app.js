@@ -1752,7 +1752,7 @@
           h("strong", {}, workoutTitle(activity)),
           h("small", {}, workoutMeta(activity, false))
         ),
-        h("span", { class: "intensity-pill", dataset: { level: intensityLevel(activity.intensity) } }, displayIntensity(activity.intensity))
+        h("span", { class: "workout-intensity" }, displayIntensity(activity.intensity))
       ));
     }
   }
