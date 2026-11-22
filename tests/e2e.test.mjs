@@ -356,6 +356,24 @@ await check("4f. uma unidade usa o peso da porção encontrada", async () => {
   await page.close();
 });
 
+await check("4g. padroniza o nome antes de pesquisar", async () => {
+  await resetAll();
+  await seed(demoState());
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  const inputs = ["1 Big Mac", "2 esfihas de carne", "1 colher de sopa de chia"];
+  for (let index = 0; index < inputs.length; index += 1) {
+    await send(page, inputs[index]);
+    await waitFor(async () => (await getState()).foodCalls === index + 1);
+  }
+  const state = await getState();
+  equal(state.foodQueries[0], "big mac", "nome e espaço");
+  equal(state.foodQueries[1], "esfiha de carne", "plural e preposição");
+  equal(state.foodQueries[2], "chia", "quantidade e unidade fora do nome");
+  await page.close();
+});
+
 await check("4e. sem dados públicos, não inventa valores", async () => {
   await resetAll();
   await setConfig({ foodMode: "notfound" });

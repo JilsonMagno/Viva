@@ -45,7 +45,7 @@ globalThis.fetch = async (url, options = {}) => {
       products: [
         {
           code: "789",
-          product_name: query === "esfiha" ? "Esfiha de carne" : "Alimento de teste",
+          product_name: query.startsWith("esfiha") ? "Esfiha de carne" : query === "big mac" ? "Big Mac" : query === "chia" ? "Chia" : "Alimento de teste",
           brands: "Marca teste",
           quantity: "219 g",
           nutriments: {
@@ -99,15 +99,34 @@ await check("alimento encontrado usa valores por 100 g", async () => {
   assert(calls[0].includes("search_terms=esfiha"), "termo pesquisado");
 });
 
-await check("plural tenta o singular quando necessário", async () => {
+await check("plural é padronizado para o singular", async () => {
   calls.length = 0;
   const res = response();
-  await handler(request({ name: "esfihas" }), res);
+  await handler(request({ name: "esfihas de carne" }), res);
   assert(res.statusCode === 200, `status ${res.statusCode}`);
   assert(res.body.food.name === "Esfiha de carne", "nome");
-  assert(calls.length >= 2, "tenta plural e singular");
-  assert(calls[0].includes("search_terms=esfihas"), "primeiro plural");
-  assert(calls.at(-1).includes("search_terms=esfiha"), "depois singular");
+  assert(calls.length === 1, "uma busca");
+  assert(calls[0].includes("search_terms=esfiha%20de%20carne"), "termo singular");
+});
+
+await check("nome sujo é padronizado antes da busca", async () => {
+  calls.length = 0;
+  const res = response();
+  await handler(request({ name: "  1 BIG-MAC, por favor " }), res);
+  assert(res.statusCode === 200, `status ${res.statusCode}`);
+  assert(res.body.food.name === "Big Mac", "nome");
+  assert(calls.length === 1, "uma busca");
+  assert(calls[0].includes("search_terms=big%20mac"), "espaço e nome limpos");
+});
+
+await check("quantidade e unidade saem do nome pesquisado", async () => {
+  calls.length = 0;
+  const res = response();
+  await handler(request({ name: "1 colher de sopa de chia" }), res);
+  assert(res.statusCode === 200, `status ${res.statusCode}`);
+  assert(res.body.food.name === "Chia", "nome");
+  assert(calls.length === 1, "uma busca");
+  assert(calls[0].includes("search_terms=chia"), "só o alimento");
 });
 
 await check("sem resultado devolve 404", async () => {
@@ -129,4 +148,4 @@ if (failed) {
   console.error(`\n${failed} falha(s).`);
   process.exit(1);
 }
-console.log("\n7 verificações ok, 0 falha(s).");
+console.log("\n9 verificações ok, 0 falha(s).");

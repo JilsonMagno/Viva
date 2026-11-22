@@ -26,6 +26,28 @@ function normalize(text) {
     .trim();
 }
 
+const IRREGULAR_PLURALS = {
+  paes: "pao", feijoes: "feijao", ovos: "ovo", leites: "leite", carnes: "carne",
+  nozes: "noz", hamburgueres: "hamburguer", sanduiches: "sanduiche", mcdonalds: "mcdonalds"
+};
+const QUERY_ALIASES = { bigmac: "big mac", "mc donalds": "mcdonalds" };
+
+function canonicalFoodQuery(value) {
+  let text = normalize(value)
+    .replace(/^(?:\d+(?:[.,]\d+)?|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)\s+/, "")
+    .replace(/^(?:comi|almocei|jantei|tomei|lanchei|merendei|quero|queria|gostaria|anota|adiciona|registra)\s+/, "")
+    .replace(/^\d+(?:[.,]\d+)?\s*(?:g|gramas?|ml|mililitros?|litros?|l)\s+(?:de\s+)?/, "")
+    .replace(/^(?:colher(?:es)?\s+de\s+(?:sopa|cha)|colher(?:es)?|copos?|xicaras?|fatias?|gramas?|g|ml|mililitros?|litros?|l|pratos?|conchas?|scoops?|barras?|latas?|pacotes?|potes?|unidades?|porcoes?|doses?)\s+/, "")
+    .replace(/\b(?:por favor|obrigado|obrigada|valeu|ok|beleza|certo|ta|hoje|agora|no almoco|no jantar|no cafe da manha|de manha|a tarde|a noite)\b/g, " ")
+    .replace(/\b(?:um pouco de|um pouco|mais ou menos)\b/g, " ")
+    .replace(/\s+\d+(?:[.,]\d+)?\s*(?:g|gramas?|ml)\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  text = text.replace(/^(?:de|do|da|dos|das|com)\s+/, "").replace(/\s+(?:de|do|da|dos|das|com)$/, "").trim();
+  text = text.replace(/\b([a-z]{3,})s\b/g, (word) => IRREGULAR_PLURALS[word] || word.slice(0, -1));
+  return QUERY_ALIASES[text] || text;
+}
+
 function number(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -179,10 +201,10 @@ export default async function handler(req, res) {
     try { body = JSON.parse(body); } catch { body = {}; }
   }
   body = body && typeof body === "object" ? body : {};
-  const name = String(body.name || "").trim().slice(0, 120);
+  const name = canonicalFoodQuery(body.name).slice(0, 120);
   if (name.length < 2) return json(res, 400, { error: "missing_name" });
 
-  const key = normalize(name);
+  const key = name;
   const cached = CACHE.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL) return json(res, 200, { found: true, food: cached.food });
 

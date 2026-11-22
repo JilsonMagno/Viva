@@ -789,6 +789,21 @@
     aliases: Array.from(new Set([food.name, ...food.aliases])).map(normalize)
   }));
 
+  function isQuantityPrefix(prefix) {
+    let rest = prefix.trim();
+    if (!rest) return true;
+    const amount = rest.match(new RegExp(`^${AMOUNT_TOKEN}\\s*(.*)$`));
+    if (amount) rest = amount[2].trim();
+    for (const unit of UNKNOWN_UNITS) {
+      const match = rest.match(unit.re);
+      if (!match) continue;
+      rest = rest.slice(match[0].length).trim();
+      break;
+    }
+    rest = rest.replace(/^(?:de|do|da|dos|das)\b\s*/, "").trim();
+    return !rest;
+  }
+
   function findFoodHits(text) {
     const hits = [];
     for (const entry of FOOD_INDEX) {
@@ -812,6 +827,8 @@
     hits.sort((a, b) => a.index - b.index || (b.end - b.index) - (a.end - a.index));
     const chosen = [];
     for (const hit of hits) {
+      if (!isQuantityPrefix(text.slice(0, hit.index))) continue;
+      if (text.slice(hit.end).trim()) continue;
       if (chosen.some((c) => hit.index < c.end && c.index < hit.end)) continue;
       chosen.push(hit);
     }
@@ -884,7 +901,7 @@
     { re: /^latas?\b/, grams: 350 },
     { re: /^pacotes?\b/, grams: 100 },
     { re: /^potes?\b/, grams: 170 },
-    { re: /^(?:unidades?|porcoes|porcao)\b/, grams: 100 }
+    { re: /^(?:unidades?|porcoes|porcao|doses?)\b/, grams: null }
   ];
 
   function maskUnits(text) {
@@ -898,6 +915,35 @@
       .replace(/\s+/g, " ")
       .trim();
     return norm.split(MEAL_SEPARATOR).map((part) => part.trim()).filter((part) => part.length > 1);
+  }
+
+  const IRREGULAR_PLURALS = {
+    paes: "pao", feijoes: "feijao", ovos: "ovo", leites: "leite", carnes: "carne",
+    nozes: "noz", hamburgueres: "hamburguer", sanduiches: "sanduiche", mcdonalds: "mcdonalds"
+  };
+  const FOOD_QUERY_ALIASES = {
+    bigmac: "big mac",
+    "big-mac": "big mac",
+    "mc donalds": "mcdonalds"
+  };
+  const FOOD_STOPWORDS = new Set([
+    "por favor", "obrigado", "obrigada", "valeu", "ok", "beleza", "certo", "ta",
+    "hoje", "agora", "no almoco", "no jantar", "no cafe da manha", "de manha", "a tarde", "a noite"
+  ]);
+
+  function canonicalFoodName(value) {
+    let text = normalize(value)
+      .replace(/[.,]/g, " ")
+      .replace(/^(?:comi|almocei|jantei|tomei|lanchei|merendei|quero|queria|gostaria|anota|adiciona|registra)\s+/, "")
+      .replace(/\b(?:por favor|obrigado|obrigada|valeu|ok|beleza|certo|ta|hoje|agora|no almoco|no jantar|no cafe da manha|de manha|a tarde|a noite)\b/g, " ")
+      .replace(/\b(?:um pouco de|um pouco|mais ou menos)\b/g, " ")
+      .replace(/\s+\d+(?:[.,]\d+)?\s*(?:g|gramas?|ml)\s*$/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    text = text.replace(/^(?:de|do|da|dos|das|com)\s+/, "").replace(/\s+(?:de|do|da|dos|das|com)$/, "").trim();
+    text = text.replace(/\b([a-z]{3,})s\b/g, (word) => IRREGULAR_PLURALS[word] || word.slice(0, -1));
+    text = FOOD_QUERY_ALIASES[text] || text;
+    return FOOD_STOPWORDS.has(text) ? "" : text;
   }
 
   function parseUnknownSegment(segment) {
@@ -914,14 +960,21 @@
     for (const unit of UNKNOWN_UNITS) {
       const match = rest.match(unit.re);
       if (!match) continue;
-      grams = qty * unit.grams;
+      grams = unit.grams == null ? null : qty * unit.grams;
       rest = rest.slice(match[0].length).trim();
       break;
+    }
+    const trailing = rest.match(/\s+(\d+(?:[.,]\d+)?)\s*(?:g|gramas?|ml)\s*$/);
+    if (trailing && grams == null) {
+      grams = amountValue(trailing[1]);
+      rest = rest.slice(0, trailing.index).trim();
     }
     rest = rest.replace(/^(?:de|do|da|dos|das)\s+/, "").trim();
     if (!rest || rest.length < 2) return null;
     if (/^(?:colher|colheres|grama|gramas|g|ml|mililitro|mililitros|litro|litros|copo|copos|xicara|xicaras|fatia|fatias|unidade|unidades|porcao|porcoes|prato|pratos|concha|conchas|scoop|scoops|barra|barras|lata|latas|pacote|pacotes|pote|potes)$/.test(rest)) return null;
-    return { name: rest, qty, grams };
+    const name = canonicalFoodName(rest);
+    if (!name) return null;
+    return { name, rawName: rest, qty, grams };
   }
 
   async function lookupFood(name) {
@@ -974,7 +1027,7 @@
       if (!unknownItem) continue;
       const found = await lookupFood(unknownItem.name);
       if (!found) {
-        unknown.push(unknownItem.name);
+        unknown.push(unknownItem.rawName || unknownItem.name);
         continue;
       }
       const totalGrams = unknownItem.grams ?? (found.servingGrams ? unknownItem.qty * found.servingGrams : unknownItem.qty * 100);

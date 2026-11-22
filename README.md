@@ -36,13 +36,13 @@ Testes:
 - `node tests/rls.test.mjs`: 11 verificações da migração e das regras de acesso, em Postgres real (PGlite), incluindo um usuário anônimo.
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
 - `node tests/ai-proxy.test.mjs`: 9 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter e recusa de foto no Groq.
-- `node tests/food-api.test.mjs`: 7 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, plural, valores por 100 g e ausência de dados.
-- `node tests/e2e.test.mjs`: 28 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, nomes fora da tabela, peso da porção, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/food-api.test.mjs`: 9 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, plural, valores por 100 g e ausência de dados.
+- `node tests/e2e.test.mjs`: 29 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, padronização dos nomes, nomes fora da tabela, peso da porção, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as cinco suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 176.346 bytes crus, 45.861 bytes em gzip e 47.933 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 178.699 bytes crus, 46.572 bytes em gzip e 48.607 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
 - O service worker guarda a casca do app; a versão atual é `viva-v2.8.1`.
@@ -66,6 +66,28 @@ Depois disso, abra o link no celular e toque em *Adicionar à tela inicial*.
 O assistente entende a quantidade antes do alimento: `4 colheres de aveia` usa 60 g (4 × 15 g), enquanto `1 colher de aveia` usa 15 g. Também aceita colher de sopa (15 g), colher de chá (5 g), copo (250 g), xícara (200 g), fatia (30 g), gramas, ml, litros, unidades, porções, prato, concha, scoop, barra, lata, pacote e pote.
 
 Quando o nome não está nos 83 alimentos da tabela, o app consulta o **Open Food Facts** pelo endpoint `/api/food`, valida o JWT do Supabase e usa os valores por 100 g do produto encontrado. Se o usuário informar uma unidade (ex.: `1 Big Mac`), o app usa o peso da porção cadastrada no produto (ex.: 219 g) em vez de assumir 100 g. O Big Mac, por exemplo, fica com 219 g e cerca de 563 kcal. A resposta mostra `Fonte: Open Food Facts`. Se a base não tiver kcal, proteína, carboidratos e gordura completos, o app **não anota e não inventa**: pede a porção e as kcal ou o uso de um alimento da tabela. A IA não é usada para estimar valores nutricionais de nomes desconhecidos.
+
+## Padronização antes da busca
+
+Antes de consultar qualquer base, o texto passa por `canonicalFoodName` no navegador e por `canonicalFoodQuery` no servidor. O método é o mesmo nos dois lados:
+
+1. deixa tudo em minúsculas, sem acentos e sem pontuação;
+2. remove verbos e contexto (`comi`, `quero`, `hoje`, `no almoço`) e cortesias (`por favor`);
+3. separa a quantidade da unidade;
+4. tira quantidade e unidade do nome do alimento;
+5. remove preposições nas pontas (`de`, `do`, `da`);
+6. singulariza plurais regulares e irregulares (`esfihas` → `esfiha`, `ovos` → `ovo`, `pães` → `pão`);
+7. aplica aliases conhecidos (`bigmac` → `big mac`, `mc donalds` → `mcdonalds`);
+8. codifica o espaço como `%20` na URL do Open Food Facts.
+
+A tabela local só reconhece o **nome completo** do alimento. Por isso `esfiha de carne` não é confundida com `carne`, e `pizza de calabresa` não é confundida com `pizza`. Quando o nome completo não está na tabela, ele vai para a busca externa.
+
+Exemplos:
+
+- `1 BIG-MAC, por favor` → busca `big mac`
+- `2 esfihas de carne` → busca `esfiha de carne`
+- `1 colher de sopa de chia` → busca `chia`
+- `1 Big Mac 219g` → busca `big mac`, com 219 g explícitos
 
 O Google não oferece uma API pública gratuita de nutrição estruturada; por isso a busca externa usa o Open Food Facts. Se você tiver uma API de busca própria, ela pode ser adicionada em `api/food.mjs`.
 
