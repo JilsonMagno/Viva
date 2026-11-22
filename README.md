@@ -7,6 +7,7 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 ## O que já está pronto e testado
 
 - Login com Google pelo Supabase (PKCE), com renovação automática da sessão.
+- Login visitante (anônimo) para usar sem OAuth; os dados ficam vinculados ao navegador.
 - Primeiro acesso sem dados de exemplo: você informa idade, altura, peso e objetivo, e a Viva calcula as metas iniciais.
 - Cada conta lê e grava só a própria linha no banco (RLS).
 - Registros pelo assistente (refeições, água, atividade e peso) são salvos na conta.
@@ -18,7 +19,7 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 Testes:
 - `node tests/rls.test.mjs`: 10 verificações da migração e das regras de acesso, em Postgres real (PGlite).
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
-- `node tests/e2e.test.mjs`: 19 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, exportação, exclusão, logout, isolamento entre contas, links diretos, PWA, acessibilidade, falha de rede e layout em 390 px.
+- `node tests/e2e.test.mjs`: 20 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, exportação, exclusão, logout, isolamento entre contas, links diretos, PWA, acessibilidade, falha de rede e layout em 390 px.
 - `npm test`: roda as três suítes.
 
 ## O que depende da sua conta (não consigo criar por você)

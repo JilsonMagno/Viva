@@ -376,6 +376,42 @@
     location.assign(`${SB}/auth/v1/authorize?${params.toString()}`);
   }
 
+  async function loginAnonymous() {
+    const button = $("#btn-anon");
+    const error = $("#auth-error");
+    if (error) error.hidden = true;
+    if (button) button.disabled = true;
+    try {
+      const res = await fetch(`${SB}/auth/v1/signup`, {
+        method: "POST",
+        headers: { apikey: KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ data: {}, gotrue_meta_security: {} })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const detail = data?.msg || data?.message || "";
+        const message = /anonymous.*disabled/i.test(detail)
+          ? "O modo visitante ainda não está ativado no servidor."
+          : "Não foi possível entrar. Tente de novo.";
+        if (error) { error.textContent = message; error.hidden = false; }
+        else toast(message);
+        return;
+      }
+      const session = normalizeSession(data);
+      storeSession(session);
+      user = session.user;
+      show("boot");
+      await enterApp();
+    } catch {
+      show("screen-login");
+      const message = "Não foi possível entrar. Verifique a conexão.";
+      if (error) { error.textContent = message; error.hidden = false; }
+      else toast(message);
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
   async function handleCallback() {
     const params = new URLSearchParams(location.search);
     const code = params.get("code");
@@ -1421,7 +1457,10 @@
   }
 
   function bind() {
+    if (CFG.AUTH_GOOGLE === false) $("#btn-google").hidden = true;
     $("#btn-google").addEventListener("click", startLogin);
+    const anon = $("#btn-anon");
+    if (anon) anon.addEventListener("click", loginAnonymous);
     $("#onb-form").addEventListener("submit", submitOnboarding);
     for (const id of ["onb-age", "onb-height", "onb-weight"]) $("#" + id).addEventListener("input", updateOnboardingPreview);
     for (const radio of $$("input[name=goal]")) radio.addEventListener("change", updateOnboardingPreview);

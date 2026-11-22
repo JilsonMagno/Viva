@@ -230,6 +230,24 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === "/sb/auth/v1/signup" && req.method === "POST") {
+    const body = (await readJson(req)) || {};
+    if (body.email || body.password) {
+      json(res, { error: "email_signup_not_supported" }, 400);
+      return;
+    }
+    const user = {
+      id: crypto.randomUUID(),
+      email: null,
+      is_anonymous: true,
+      user_metadata: {},
+      app_metadata: { provider: "anonymous", providers: ["anonymous"] }
+    };
+    USERS.set(user.id, user);
+    json(res, issue(user));
+    return;
+  }
+
   if (pathname === "/sb/auth/v1/authorize") {
     state.lastAuthorize = Object.fromEntries(url.searchParams.entries());
     const redirectTo = url.searchParams.get("redirect_to") || `http://127.0.0.1:${PORT}/`;

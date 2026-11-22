@@ -616,7 +616,30 @@ await check("18. configuração ausente mostra a tela de aviso", async () => {
   await context.close();
 });
 
-await check("19. nenhuma exceção de página durante os testes", async () => {
+await check("19. login visitante entra e cria dados no Supabase", async () => {
+  await resetAll();
+  const context = await browser.createBrowserContext();
+  const page = await context.newPage();
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.goto(`${BASE}/?sw=0`, { waitUntil: "domcontentloaded", timeout: 15000 });
+  await page.waitForFunction(() => !document.getElementById("screen-login").hidden, { timeout: 5000 });
+  await page.click("#btn-anon");
+  await waitOnboarding(page);
+  await page.type("#onb-name", "Visitante");
+  await page.type("#onb-age", "30");
+  await page.type("#onb-height", "170");
+  await page.type("#onb-weight", "70");
+  await page.click("#onb-submit");
+  await waitMain(page);
+  assert((await textOf(page, "#greet-title")).includes("Visitante"), "saudação deveria citar Visitante");
+  const state = await getState();
+  equal(state.rows.length, 1, "deveria existir uma linha para o visitante");
+  equal(state.rows[0].data.profile.name, "Visitante", "nome do perfil visitante");
+  await context.close();
+});
+
+await check("20. nenhuma exceção de página durante os testes", async () => {
   assert(pageErrors.length === 0, pageErrors.join(" | "));
 });
 
