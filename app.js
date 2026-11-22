@@ -797,9 +797,12 @@
         let index = text.indexOf(alias, from);
         while (index !== -1) {
           const before = index === 0 ? " " : text[index - 1];
-          const after = text[index + alias.length] || " ";
-          if (!/[a-z0-9]/.test(before) && !/[a-z0-9]/.test(after)) {
-            hits.push({ food: entry.food, index, end: index + alias.length });
+          let end = index + alias.length;
+          const after = text[end] || " ";
+          const plural = after === "s" && !alias.endsWith("s") && !/[a-z0-9]/.test(text[end + 1] || " ");
+          if (plural) end += 1;
+          if (!/[a-z0-9]/.test(before) && !/[a-z0-9]/.test(text[end] || " ")) {
+            hits.push({ food: entry.food, index, end });
           }
           from = index + 1;
           index = text.indexOf(alias, from);
@@ -818,8 +821,8 @@
   function quantityBefore(text, index, food) {
     const window = text.slice(Math.max(0, index - 32), index);
     const units = [
-      { re: /(\d+(?:[.,]\d+)?)\s*colheres?\s+de\s+sopa\s+(?:de\s+)?$/, grams: 15 },
-      { re: /(\d+(?:[.,]\d+)?)\s*colheres?\s+de\s+cha\s+(?:de\s+)?$/, grams: 5 },
+      { re: /(\d+(?:[.,]\d+)?)\s*colher(?:es)?\s+de\s+sopa\s+(?:de\s+)?$/, grams: 15 },
+      { re: /(\d+(?:[.,]\d+)?)\s*colher(?:es)?\s+de\s+cha\s+(?:de\s+)?$/, grams: 5 },
       { re: /(\d+(?:[.,]\d+)?)\s*(?:copos?)\s+(?:de\s+)?$/, grams: 250 },
       { re: /(\d+(?:[.,]\d+)?)\s*(?:xicaras?)\s+(?:de\s+)?$/, grams: 200 },
       { re: /(\d+(?:[.,]\d+)?)\s*(?:fatias?)\s+(?:de\s+)?$/, grams: 30 },
@@ -858,7 +861,8 @@
 
   function parseMeal(text) {
     const norm = normalize(text);
-    const hits = findFoodHits(norm);
+    const matchText = norm.replace(/\bcolher(?:es)?\s+de\s+(?:sopa|cha)\b/g, (unit) => " ".repeat(unit.length));
+    const hits = findFoodHits(matchText);
     if (!hits.length) return null;
     const items = hits.map((hit) => {
       const grams = quantityBefore(norm, hit.index, hit.food);

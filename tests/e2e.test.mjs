@@ -267,6 +267,29 @@ await check("4. refeição por texto é somada e persiste após recarregar", asy
   await page.close();
 });
 
+await check("4b. refeição entende plural e não confunde 'colher de sopa' com sopa", async () => {
+  await resetAll();
+  await seed(demoState());
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "Duas bananas com 2 colher de sopa de aveia");
+  await waitChat(page, "Total da refeição: 256 kcal");
+  const row = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    return current && current.data.days[today()]?.meals?.length === 1 ? current : null;
+  });
+  const meal = row.data.days[today()].meals[0];
+  equal(meal.items.length, 2, "itens da refeição");
+  equal(meal.items[0].name, "Banana", "primeiro item");
+  equal(meal.items[0].grams, 140, "gramas de banana");
+  equal(meal.items[1].name, "Aveia em flocos", "segundo item");
+  equal(meal.items[1].grams, 30, "gramas de aveia");
+  assert(!meal.items.some((item) => /sopa/i.test(item.name)), "não deveria registrar sopa");
+  assert(Math.abs(meal.kcal - 256) < 0.6, `kcal ${meal.kcal}`);
+  await page.close();
+});
+
 await check("5. água soma, desfaz e persiste", async () => {
   await resetAll();
   const base = demoState({ days: {} });
