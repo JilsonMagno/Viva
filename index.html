@@ -421,6 +421,18 @@ img,svg{display:block}
 /* avisos */
 .toast{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translate(-50%,16px);z-index:60;background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:999px;font-size:.85rem;font-weight:650;opacity:0;pointer-events:none;transition:opacity .2s ease,transform .2s ease;max-width:calc(100vw - 32px);text-align:center;box-shadow:0 12px 30px -12px rgba(0,0,0,.5)}
 .toast[data-show="true"]{opacity:1;transform:translate(-50%,0)}
+.msg-actions{display:flex;justify-content:flex-end;margin-top:5px}
+.msg-report{border:0;background:none;padding:2px 0;color:var(--muted);font:inherit;font-size:.68rem;font-weight:650;cursor:pointer}
+.msg-report:hover{color:var(--green-3);text-decoration:underline}
+.report-dialog{width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;border:0;border-radius:20px;background:transparent;color:var(--ink)}
+.report-dialog::backdrop{background:rgba(10,20,14,.45)}
+.report-card{display:grid;gap:12px;padding:18px;border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:0 24px 60px -24px rgba(0,0,0,.45)}
+.report-card header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.report-card h2{font-family:var(--font-display);font-size:1.35rem;line-height:1.1}
+.report-hint{font-size:.8rem;color:var(--muted);line-height:1.4}
+.report-card textarea{width:100%;min-height:220px;max-height:45dvh;resize:vertical;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--bg-2);color:var(--ink);font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
+.report-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.report-status{min-height:1.2em;font-size:.78rem;color:var(--muted)}
 @media (min-width:960px){.toast{bottom:24px}}
 .offline-bar{background:rgba(196,105,74,.14);border:1px solid rgba(196,105,74,.3);color:var(--terra);border-radius:14px;padding:9px 13px;font-size:.8rem;font-weight:650;text-align:center}
 </style>
@@ -899,6 +911,21 @@ img,svg{display:block}
     </nav>
   </div>
 </div>
+<dialog id="report-dialog" class="report-dialog" aria-labelledby="report-title">
+  <form method="dialog" class="report-card">
+    <header>
+      <h2 id="report-title">Reportar problema</h2>
+      <button type="submit" class="icon-btn" value="cancel" aria-label="Fechar relatório">×</button>
+    </header>
+    <p class="report-hint">Revise o relatório. Ele inclui sua mensagem, a resposta da Viva, seu perfil sem nome ou e-mail, as refeições de hoje e a versão do app.</p>
+    <textarea id="report-text" readonly aria-label="Relatório"></textarea>
+    <div class="report-actions">
+      <button type="button" class="btn btn-ghost btn-sm" id="report-copy">Copiar</button>
+      <button type="button" class="btn btn-primary btn-sm" id="report-send">Enviar</button>
+    </div>
+    <p class="report-status" id="report-status" role="status"></p>
+  </form>
+</dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script src="config.js"></script>
 <script>
@@ -922,6 +949,7 @@ img,svg{display:block}
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
+  const APP_VERSION = "2.15.7";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -2970,13 +2998,22 @@ img,svg{display:block}
     queueSave();
   }
 
-  function messageNode(message) {
-    return h(
-      "div",
-      { class: `msg ${message.role === "me" ? "me" : "viva"}` },
-      message.text,
-      h("time", { datetime: message.at || "" }, fmtTime(message.at || nowIso()))
-    );
+  function messageNode(message, index) {
+    const kids = [h("div", { class: "msg-text" }, message.text)];
+    if (message.role !== "me") {
+      kids.push(h(
+        "div",
+        { class: "msg-actions" },
+        h("button", {
+          class: "msg-report",
+          type: "button",
+          dataset: { index },
+          "aria-label": "Reportar problema nesta resposta"
+        }, "Reportar")
+      ));
+    }
+    kids.push(h("time", { datetime: message.at || "" }, fmtTime(message.at || nowIso())));
+    return h("div", { class: `msg ${message.role === "me" ? "me" : "viva"}` }, kids);
   }
 
   function appendThinking() {
@@ -2993,7 +3030,7 @@ img,svg{display:block}
     const log = $("#chat-log");
     log.innerHTML = "";
     const messages = state.chat.length ? state.chat : [{ role: "viva", text: WELCOME, at: nowIso() }];
-    for (const message of messages) log.append(messageNode(message));
+    messages.forEach((message, index) => log.append(messageNode(message, index)));
     log.scrollTop = log.scrollHeight;
     const ai = !!state.profile.aiEnabled;
     const config = activeAIConfig();
@@ -3028,6 +3065,102 @@ img,svg{display:block}
     renderChat();
     chatBusy = false;
     input.focus();
+  }
+
+  let reportPayload = null;
+
+  function reportContext(index, messages) {
+    const answer = messages[index];
+    const question = index > 0 && messages[index - 1].role === "me" ? messages[index - 1] : null;
+    const day = dayData();
+    return {
+      app: "Viva",
+      version: APP_VERSION,
+      createdAt: nowIso(),
+      screen: currentView,
+      question: question?.text || "",
+      answer: answer?.text || "",
+      conversation: messages.slice(Math.max(0, index - 5), index + 1).map((message) => ({
+        role: message.role,
+        text: message.text,
+        at: message.at
+      })),
+      profile: state.profile ? {
+        age: state.profile.age,
+        heightCm: state.profile.heightCm,
+        weightKg: state.profile.weightKg,
+        goal: state.profile.goal,
+        aiEnabled: !!state.profile.aiEnabled
+      } : null,
+      targets: state.targets,
+      today: {
+        totals: dayTotals(),
+        meals: (day.meals || []).map((meal) => ({
+          label: meal.label,
+          items: (meal.items || []).map((item) => ({
+            name: item.name,
+            grams: item.grams,
+            kcal: item.kcal,
+            source: item.source
+          }))
+        }))
+      },
+      userAgent: navigator.userAgent,
+      url: location.href
+    };
+  }
+
+  function openReport(index) {
+    const messages = state.chat.length ? state.chat : [{ role: "viva", text: WELCOME, at: nowIso() }];
+    reportPayload = reportContext(index, messages);
+    $("#report-text").value = JSON.stringify(reportPayload, null, 2);
+    $("#report-status").textContent = "";
+    const dialog = $("#report-dialog");
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  }
+
+  async function copyReport(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.append(area);
+      area.select();
+      let copied = false;
+      try { copied = document.execCommand("copy"); } catch { copied = false; }
+      area.remove();
+      return copied;
+    }
+  }
+
+  async function sendReport() {
+    if (!reportPayload) return;
+    const status = $("#report-status");
+    const dialog = $("#report-dialog");
+    status.textContent = "Enviando…";
+    try {
+      const session = await ensureSession();
+      if (!session) throw new Error("sem sessão");
+      const response = await fetch("/api/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(reportPayload)
+      });
+      if (!response.ok) throw new Error("falha ao enviar");
+      const data = await response.json().catch(() => ({}));
+      toast(data.stored === false ? "Relatório recebido. Obrigado!" : "Relatório enviado. Obrigado!");
+      dialog.close();
+    } catch {
+      const copied = await copyReport($("#report-text").value);
+      status.textContent = copied
+        ? "Não consegui enviar. O relatório foi copiado; cole no suporte."
+        : "Não consegui enviar. Copie o relatório manualmente.";
+    }
   }
 
   function setAvatar() {
@@ -4230,6 +4363,16 @@ img,svg{display:block}
       event.preventDefault();
       sendChat($("#chat-input").value);
     });
+    $("#chat-log").addEventListener("click", (event) => {
+      const button = event.target.closest(".msg-report");
+      if (!button) return;
+      openReport(Number(button.dataset.index));
+    });
+    $("#report-copy")?.addEventListener("click", async () => {
+      const copied = await copyReport($("#report-text").value);
+      $("#report-status").textContent = copied ? "Relatório copiado." : "Não consegui copiar. Selecione o texto e copie manualmente.";
+    });
+    $("#report-send")?.addEventListener("click", sendReport);
     $("#chat-input").addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();

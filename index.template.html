@@ -421,6 +421,18 @@ img,svg{display:block}
 /* avisos */
 .toast{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translate(-50%,16px);z-index:60;background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:999px;font-size:.85rem;font-weight:650;opacity:0;pointer-events:none;transition:opacity .2s ease,transform .2s ease;max-width:calc(100vw - 32px);text-align:center;box-shadow:0 12px 30px -12px rgba(0,0,0,.5)}
 .toast[data-show="true"]{opacity:1;transform:translate(-50%,0)}
+.msg-actions{display:flex;justify-content:flex-end;margin-top:5px}
+.msg-report{border:0;background:none;padding:2px 0;color:var(--muted);font:inherit;font-size:.68rem;font-weight:650;cursor:pointer}
+.msg-report:hover{color:var(--green-3);text-decoration:underline}
+.report-dialog{width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;border:0;border-radius:20px;background:transparent;color:var(--ink)}
+.report-dialog::backdrop{background:rgba(10,20,14,.45)}
+.report-card{display:grid;gap:12px;padding:18px;border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:0 24px 60px -24px rgba(0,0,0,.45)}
+.report-card header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.report-card h2{font-family:var(--font-display);font-size:1.35rem;line-height:1.1}
+.report-hint{font-size:.8rem;color:var(--muted);line-height:1.4}
+.report-card textarea{width:100%;min-height:220px;max-height:45dvh;resize:vertical;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--bg-2);color:var(--ink);font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
+.report-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.report-status{min-height:1.2em;font-size:.78rem;color:var(--muted)}
 @media (min-width:960px){.toast{bottom:24px}}
 .offline-bar{background:rgba(196,105,74,.14);border:1px solid rgba(196,105,74,.3);color:var(--terra);border-radius:14px;padding:9px 13px;font-size:.8rem;font-weight:650;text-align:center}
 </style>
@@ -899,4 +911,19 @@ img,svg{display:block}
     </nav>
   </div>
 </div>
+<dialog id="report-dialog" class="report-dialog" aria-labelledby="report-title">
+  <form method="dialog" class="report-card">
+    <header>
+      <h2 id="report-title">Reportar problema</h2>
+      <button type="submit" class="icon-btn" value="cancel" aria-label="Fechar relatório">×</button>
+    </header>
+    <p class="report-hint">Revise o relatório. Ele inclui sua mensagem, a resposta da Viva, seu perfil sem nome ou e-mail, as refeições de hoje e a versão do app.</p>
+    <textarea id="report-text" readonly aria-label="Relatório"></textarea>
+    <div class="report-actions">
+      <button type="button" class="btn btn-ghost btn-sm" id="report-copy">Copiar</button>
+      <button type="button" class="btn btn-primary btn-sm" id="report-send">Enviar</button>
+    </div>
+    <p class="report-status" id="report-status" role="status"></p>
+  </form>
+</dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>

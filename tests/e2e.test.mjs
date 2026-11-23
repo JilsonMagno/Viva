@@ -828,6 +828,35 @@ await check("8i. pergunta sobre alimento não vira refeição", async () => {
   await page.close();
 });
 
+await check("8j. botão Reportar envia mensagem e contexto", async () => {
+  await resetAll();
+  await seed(demoState({ days: {} }));
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "sardinha");
+  await waitChat(page, "Anotei no");
+  await page.evaluate(() => {
+    const buttons = [...document.querySelectorAll(".msg-report")];
+    buttons[buttons.length - 1].click();
+  });
+  await page.waitForFunction(() => document.getElementById("report-dialog").open, { timeout: 5000 });
+  const text = await page.$eval("#report-text", (element) => element.value);
+  assert(text.includes('"question": "sardinha"'), "relatório sem a pergunta");
+  assert(text.includes("Sardinha em óleo"), "relatório sem a resposta");
+  assert(!text.includes('"name": "Ana"'), "relatório não deve expor o nome");
+  await page.click("#report-send");
+  const report = await waitFor(async () => {
+    const current = await getState();
+    return current.reports?.length ? current.reports[0] : null;
+  });
+  equal(report.question, "sardinha", "pergunta enviada");
+  equal(report.version, "2.15.7", "versão enviada");
+  equal(report.profile.name, undefined, "nome não deve ir no relatório");
+  assert(report.today.meals.length === 1, "refeição deveria ir no contexto");
+  await page.close();
+});
+
 await check("9. IA desligada e falha da IA não quebram o app", async () => {
   await resetAll();
   const base = demoState({ days: {} });

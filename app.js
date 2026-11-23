@@ -18,6 +18,7 @@
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
+  const APP_VERSION = "2.15.7";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -2066,13 +2067,22 @@
     queueSave();
   }
 
-  function messageNode(message) {
-    return h(
-      "div",
-      { class: `msg ${message.role === "me" ? "me" : "viva"}` },
-      message.text,
-      h("time", { datetime: message.at || "" }, fmtTime(message.at || nowIso()))
-    );
+  function messageNode(message, index) {
+    const kids = [h("div", { class: "msg-text" }, message.text)];
+    if (message.role !== "me") {
+      kids.push(h(
+        "div",
+        { class: "msg-actions" },
+        h("button", {
+          class: "msg-report",
+          type: "button",
+          dataset: { index },
+          "aria-label": "Reportar problema nesta resposta"
+        }, "Reportar")
+      ));
+    }
+    kids.push(h("time", { datetime: message.at || "" }, fmtTime(message.at || nowIso())));
+    return h("div", { class: `msg ${message.role === "me" ? "me" : "viva"}` }, kids);
   }
 
   function appendThinking() {
@@ -2089,7 +2099,7 @@
     const log = $("#chat-log");
     log.innerHTML = "";
     const messages = state.chat.length ? state.chat : [{ role: "viva", text: WELCOME, at: nowIso() }];
-    for (const message of messages) log.append(messageNode(message));
+    messages.forEach((message, index) => log.append(messageNode(message, index)));
     log.scrollTop = log.scrollHeight;
     const ai = !!state.profile.aiEnabled;
     const config = activeAIConfig();
@@ -2124,6 +2134,102 @@
     renderChat();
     chatBusy = false;
     input.focus();
+  }
+
+  let reportPayload = null;
+
+  function reportContext(index, messages) {
+    const answer = messages[index];
+    const question = index > 0 && messages[index - 1].role === "me" ? messages[index - 1] : null;
+    const day = dayData();
+    return {
+      app: "Viva",
+      version: APP_VERSION,
+      createdAt: nowIso(),
+      screen: currentView,
+      question: question?.text || "",
+      answer: answer?.text || "",
+      conversation: messages.slice(Math.max(0, index - 5), index + 1).map((message) => ({
+        role: message.role,
+        text: message.text,
+        at: message.at
+      })),
+      profile: state.profile ? {
+        age: state.profile.age,
+        heightCm: state.profile.heightCm,
+        weightKg: state.profile.weightKg,
+        goal: state.profile.goal,
+        aiEnabled: !!state.profile.aiEnabled
+      } : null,
+      targets: state.targets,
+      today: {
+        totals: dayTotals(),
+        meals: (day.meals || []).map((meal) => ({
+          label: meal.label,
+          items: (meal.items || []).map((item) => ({
+            name: item.name,
+            grams: item.grams,
+            kcal: item.kcal,
+            source: item.source
+          }))
+        }))
+      },
+      userAgent: navigator.userAgent,
+      url: location.href
+    };
+  }
+
+  function openReport(index) {
+    const messages = state.chat.length ? state.chat : [{ role: "viva", text: WELCOME, at: nowIso() }];
+    reportPayload = reportContext(index, messages);
+    $("#report-text").value = JSON.stringify(reportPayload, null, 2);
+    $("#report-status").textContent = "";
+    const dialog = $("#report-dialog");
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  }
+
+  async function copyReport(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.append(area);
+      area.select();
+      let copied = false;
+      try { copied = document.execCommand("copy"); } catch { copied = false; }
+      area.remove();
+      return copied;
+    }
+  }
+
+  async function sendReport() {
+    if (!reportPayload) return;
+    const status = $("#report-status");
+    const dialog = $("#report-dialog");
+    status.textContent = "Enviando…";
+    try {
+      const session = await ensureSession();
+      if (!session) throw new Error("sem sessão");
+      const response = await fetch("/api/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(reportPayload)
+      });
+      if (!response.ok) throw new Error("falha ao enviar");
+      const data = await response.json().catch(() => ({}));
+      toast(data.stored === false ? "Relatório recebido. Obrigado!" : "Relatório enviado. Obrigado!");
+      dialog.close();
+    } catch {
+      const copied = await copyReport($("#report-text").value);
+      status.textContent = copied
+        ? "Não consegui enviar. O relatório foi copiado; cole no suporte."
+        : "Não consegui enviar. Copie o relatório manualmente.";
+    }
   }
 
   function setAvatar() {
@@ -3326,6 +3432,16 @@
       event.preventDefault();
       sendChat($("#chat-input").value);
     });
+    $("#chat-log").addEventListener("click", (event) => {
+      const button = event.target.closest(".msg-report");
+      if (!button) return;
+      openReport(Number(button.dataset.index));
+    });
+    $("#report-copy")?.addEventListener("click", async () => {
+      const copied = await copyReport($("#report-text").value);
+      $("#report-status").textContent = copied ? "Relatório copiado." : "Não consegui copiar. Selecione o texto e copie manualmente.";
+    });
+    $("#report-send")?.addEventListener("click", sendReport);
     $("#chat-input").addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();

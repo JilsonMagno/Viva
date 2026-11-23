@@ -72,6 +72,7 @@ const state = {
   },
   foodCalls: 0,
   foodQueries: [],
+  reports: [],
   authorizeMode: "redirect"
 };
 
@@ -104,6 +105,7 @@ function reset() {
   state.foodMode = "ok";
   state.foodCalls = 0;
   state.foodQueries = [];
+  state.reports = [];
   state.authorizeMode = "redirect";
 }
 
@@ -247,6 +249,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === "/api/report" && req.method === "POST") {
+    const body = (await readJson(req)) || {};
+    if (!String(req.headers.authorization || "").startsWith("Bearer ")) {
+      json(res, { error: "unauthorized" }, 401);
+      return;
+    }
+    state.reports.push(body);
+    json(res, { ok: true, stored: true });
+    return;
+  }
+
   if (pathname === "/__test/reset" && req.method === "POST") {
     reset();
     json(res, { ok: true });
@@ -305,6 +318,7 @@ const server = http.createServer(async (req, res) => {
       lastAI: state.lastAI,
       foodCalls: state.foodCalls,
       foodQueries: state.foodQueries,
+      reports: state.reports,
       tokens: [...state.tokens.keys()],
       refreshTokens: [...state.refresh.keys()]
     });
