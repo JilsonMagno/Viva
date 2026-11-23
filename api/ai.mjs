@@ -19,6 +19,9 @@ const DEFAULT_VISION_MODELS = {
   openrouter: "google/gemma-4-31b-it:free"
 };
 const DEFAULT_MEAL_MODEL = "google/gemma-4-31b-it:free";
+const MEAL_FALLBACKS = {
+  openrouter: ["google/gemma-4-31b-it:free", "google/gemma-4-26b-a4b-it:free"]
+};
 const VISION_FALLBACKS = {
   openrouter: ["google/gemma-4-31b-it:free", "nvidia/nemotron-3.5-super-vl:free"]
 };
@@ -322,7 +325,7 @@ export default async function handler(req, res) {
   }
 
   const models = isMealTask
-    ? (providerName === "openrouter" ? [...new Set([mealModel, model])] : [mealModel])
+    ? (providerName === "openrouter" ? [...new Set([mealModel, ...(MEAL_FALLBACKS.openrouter || []), model])].slice(0, 3) : [mealModel])
     : isVision ? visionCandidates(providerName, visionModel) : [model];
   let answer = "";
   let lastStatus = 502;
@@ -362,9 +365,7 @@ export default async function handler(req, res) {
       break;
     }
     lastStatus = 502;
-    lastError = isMealTask
-      ? `O provedor não devolveu uma estimativa válida. Retorno: ${String(content || "").slice(0, 240) || "vazio"}`
-      : "O provedor não devolveu uma estimativa.";
+    lastError = "O provedor não devolveu uma estimativa.";
   }
 
   if (!answer) return json(res, lastStatus, { error: "provider_error", message: lastError });

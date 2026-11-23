@@ -46,11 +46,11 @@ Testes:
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 238.929 bytes crus, 60.804 bytes em gzip e 50.644 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 238.929 bytes crus, 60.805 bytes em gzip e 50.610 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato usa um modelo gratuito com visão e um modelo de reserva; é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- A interpretação de refeição usa um modelo gratuito de texto/visão (`google/gemma-4-31b-it:free` no OpenRouter) e cai para o modelo de texto padrão se o primeiro não responder. O parser local só entra quando a IA está desligada ou falha.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.16.2`.
+- A interpretação de refeição usa um modelo gratuito de texto/visão (`google/gemma-4-31b-it:free` no OpenRouter) e cai para `google/gemma-4-26b-a4b-it:free` se o primeiro não devolver JSON válido. O parser local só entra quando a IA está desligada ou falha.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.16.3`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
