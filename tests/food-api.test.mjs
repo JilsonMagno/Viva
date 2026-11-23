@@ -50,6 +50,23 @@ globalThis.fetch = async (url, options = {}) => {
   const query = new URL(target).searchParams.get("search_terms");
   if (query === "esfihas") return { ok: true, json: async () => ({ products: [] }) };
   if (query.includes("sem")) return { ok: true, json: async () => ({ products: [] }) };
+  if (query === "sardinha") {
+    return {
+      ok: true,
+      json: async () => ({
+        products: [{
+          code: "pat",
+          product_name: "Patê de sardinha",
+          nutriments: {
+            "energy-kcal_100g": 250,
+            proteins_100g: 10,
+            carbohydrates_100g: 5,
+            fat_100g: 20
+          }
+        }]
+      })
+    };
+  }
   if (query === "incompleto") {
     return {
       ok: true,
@@ -170,6 +187,13 @@ await check("sem resultado devolve 404", async () => {
   assert(!cacheStore.has("sem dado"), "resultado ausente não deve ir para o cache");
 });
 
+await check("produto preparado não substitui o alimento simples", async () => {
+  const res = response();
+  await handler(request({ name: "sardinha" }), res);
+  assert(res.statusCode === 404, `status ${res.statusCode}`);
+  assert(res.body.found === false, "found");
+});
+
 await check("produto sem macros completos é ignorado", async () => {
   const res = response();
   await handler(request({ name: "incompleto" }), res);
@@ -182,4 +206,4 @@ if (failed) {
   console.error(`\n${failed} falha(s).`);
   process.exit(1);
 }
-console.log("\n10 verificações ok, 0 falha(s).");
+console.log("\n11 verificações ok, 0 falha(s).");

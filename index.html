@@ -1802,6 +1802,20 @@ img,svg{display:block}
     return chosen;
   }
 
+  const FOOD_ONLY_FILLER = /\b(?:de|do|da|dos|das|com|e|mais|em|no|na|ao|a|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|meio|meia|g|grama|gramas|ml|mililitro|mililitros|l|litro|litros|colher|colheres|sopa|cha|copo|copos|xicara|xicaras|fatia|fatias|unidade|unidades|porcao|porcoes|prato|pratos|concha|conchas|scoop|scoops|barra|barras|lata|latas|pacote|pacotes|pote|potes|garrafa|garrafas|conserva|oleo|agua|natural|fresco|fresca|frito|frita|cozido|cozida|grelhado|grelhada|assado|assada|grande|grandes|pequeno|pequena|pequenos|pequenas|pate|pasta|molho)\b/g;
+
+  function isFoodOnly(text) {
+    const norm = normalize(text);
+    const hits = findFoodHits(norm);
+    if (!hits.length) return false;
+    let rest = norm;
+    for (const hit of [...hits].sort((a, b) => b.index - a.index)) {
+      rest = `${rest.slice(0, hit.index)} ${rest.slice(hit.end)}`;
+    }
+    rest = rest.replace(/\b\d+(?:[.,]\d+)?\b/g, " ").replace(FOOD_ONLY_FILLER, " ").replace(/[^a-z]+/g, " ").trim();
+    return !rest;
+  }
+
   const AMOUNT_TOKEN = "(\\d+(?:[.,]\\d+)?|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|meio|meia)";
 
   function amountValue(token) {
@@ -2925,7 +2939,7 @@ img,svg{display:block}
     const head = text.trim().split(/\s+/).slice(0, 3).join(" ");
     const wordQuantity = /^(?:um|uma|meio|meia|dois|duas|três|tres|quatro|cinco|seis|sete|oito|nove|dez)\b/i.test(text);
     const nearFood = findFoodHits(head).length > 0 || /\b(g|gramas?|ml|colher|colheres|xícara|xícaras|fatia|fatias|unidade|unidades|porção|porcoes|prato|pratos|copo|copos|pote|potes|lata|latas|garrafa|garrafas)\b/.test(norm);
-    const looksLikeMeal = /\b(comi|tomei|bebi|registra|registre|registrar|anota|anote|anotar|adiciona|adicione|adicionar)\b/.test(norm) || /^\s*(?:\d|½|1\/2)/.test(text) || (wordQuantity && nearFood);
+    const looksLikeMeal = /\b(comi|tomei|bebi|registra|registre|registrar|anota|anote|anotar|adiciona|adicione|adicionar)\b/.test(norm) || /^\s*(?:\d|½|1\/2)/.test(text) || (wordQuantity && nearFood) || isFoodOnly(text);
     const meal = looksLikeMeal ? await parseMeal(text) : null;
     if (meal && meal.items.length) {
       const saved = addMeal(meal.items, meal.label);

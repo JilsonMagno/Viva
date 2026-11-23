@@ -752,6 +752,26 @@ await check("8e. refeição composta usa a base local e quantidades por unidade"
   await page.close();
 });
 
+await check("8f. nome de alimento sozinho é anotado sem IA", async () => {
+  await resetAll();
+  await seed(demoState({ days: {} }));
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "sardinha");
+  await waitChat(page, "Anotei no");
+  const meal = await waitFor(async () => {
+    const row = await rowFor(USER_A.id);
+    const meals = row?.data.days[today()]?.meals || [];
+    return meals.length ? meals[0] : null;
+  });
+  equal(meal.items.length, 1, "um item");
+  equal(meal.items[0].name, "Sardinha em óleo", "sardinha da base local");
+  equal(meal.items[0].grams, 100, "porção padrão");
+  equal((await getState()).aiCalls, 0, "não deveria chamar a IA");
+  await page.close();
+});
+
 await check("9. IA desligada e falha da IA não quebram o app", async () => {
   await resetAll();
   const base = demoState({ days: {} });

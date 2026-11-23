@@ -102,6 +102,14 @@ function scoreProduct(product, query) {
   return (overlap / queryTokens.length) * 60 - Math.min(8, name.length / 60);
 }
 
+const PREPARED_WORDS = /\b(?:pate|pasta|molho|temperado|temperada|defumado|defumada|empanado|empanada|nuggets?|hamburguer|salsicha|linguica|bacon|salame)\b/;
+
+function isPreparedMismatch(productName, query) {
+  const name = normalize(productName);
+  const q = normalize(query);
+  return PREPARED_WORDS.test(name) && !PREPARED_WORDS.test(q);
+}
+
 function nutrition(product) {
   const n = product?.nutriments || {};
   let kcal = number(n["energy-kcal_100g"]);
@@ -127,7 +135,7 @@ async function fetchProducts(query) {
     url.search = url.search.replace(/\+/g, "%20");
     try {
       const upstream = await fetch(url, {
-        headers: { Accept: "application/json", "User-Agent": "Viva/2.15.5 (https://viva-rouge-omega.vercel.app)" },
+        headers: { Accept: "application/json", "User-Agent": "Viva/2.15.6 (https://viva-rouge-omega.vercel.app)" },
         signal: AbortSignal.timeout(6000)
       });
       if (upstream.ok) {
@@ -151,6 +159,8 @@ async function searchOpenFoodFacts(name) {
     for (const product of products) {
       const values = nutrition(product);
       if (!values) continue;
+      const productName = String(product.product_name || product.generic_name || "").trim();
+      if (isPreparedMismatch(productName, query)) continue;
       const serving = servingGrams(product);
       const score = scoreProduct(product, query) + (serving ? 0.5 : 0);
       if (score <= 0) continue;
