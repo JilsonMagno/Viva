@@ -46,7 +46,7 @@ Testes:
 - `index.html`: 220.252 bytes crus, 56.084 bytes em gzip e 47.117 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.15.3`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.15.4`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
