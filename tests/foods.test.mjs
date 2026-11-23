@@ -114,5 +114,23 @@ check("7. a base cobre os grupos principais", () => {
   }
 });
 
+check("8. aliases da base e das preparações não se repetem", () => {
+  const dishesMatch = html.match(/const DISHES = (\[[\s\S]*?\n  \]);/);
+  assert(dishesMatch, "não encontrei o array DISHES em index.html");
+  const dishes = Function(`"use strict"; return ${dishesMatch[1]};`)();
+  const normalize = (text) => String(text).toLowerCase().normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ").trim();
+  const seen = new Map();
+  for (const entry of [...foods, ...dishes]) {
+    for (const alias of entry.aliases) {
+      const key = normalize(alias);
+      assert(key, `${entry.id}: alias vazio após normalização`);
+      assert(!seen.has(key) || seen.get(key) === entry.id, `${entry.id}: alias "${alias}" também pertence a ${seen.get(key)}`);
+      seen.set(key, entry.id);
+    }
+  }
+});
+
 console.log(`\n${passed} verificações ok, ${failed} falha(s).\n`);
 process.exit(failed ? 1 : 0);

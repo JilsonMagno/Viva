@@ -1,0 +1,50 @@
+[
+  {
+    "name": "refeição composta com quantidades por unidade",
+    "message": "Hoje comi 2 iogurtes grego 90 g cada, 100g contra file com gordura, 6 camaroes empanados com catupiry, 300g de risoto de arroz com camaroes pequenos, 2 copos de agua de coco.",
+    "kcal": 1095,
+    "expected": [
+      { "name": "Iogurte grego zero", "grams": 180 },
+      { "name": "Contra filé grelhado", "grams": 100 },
+      { "name": "Camarão empanado com catupiry", "grams": 90 },
+      { "name": "Risoto de arroz com camarão", "grams": 300 },
+      { "name": "Água de coco", "grams": 500 }
+    ]
+  },
+  {
+    "name": "sardinha com verbo de registro",
+    "message": "comi sardinha",
+    "kcal": 285,
+    "expected": [{ "name": "Sardinha em óleo", "grams": 100 }]
+  },
+  {
+    "name": "sardinha sozinha",
+    "message": "sardinha",
+    "kcal": 285,
+    "expected": [{ "name": "Sardinha em óleo", "grams": 100 }]
+  },
+  {
+    "name": "sardinha em lata",
+    "message": "1 lata de sardinha",
+    "kcal": 285,
+    "expected": [{ "name": "Sardinha em óleo", "grams": 100 }]
+  },
+  {
+    "name": "ovos e pão",
+    "message": "comi 2 ovos e um pão",
+    "kcal": 296,
+    "expected": [
+      { "name": "Ovo cozido", "grams": 100 },
+      { "name": "Pão francês", "grams": 50 }
+    ]
+  },
+  {
+    "name": "banana com aveia por colher",
+    "message": "Duas bananas com 2 colher de sopa de aveia",
+    "kcal": 256,
+    "expected": [
+      { "name": "Banana", "grams": 140 },
+      { "name": "Aveia em flocos", "grams": 30 }
+    ]
+  }
+]

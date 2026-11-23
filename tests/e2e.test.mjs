@@ -9,6 +9,7 @@ const { server, reset, USER_A, USER_B } = require("./support/server.cjs");
 
 const PORT = 12001;
 const BASE = `http://127.0.0.1:${PORT}`;
+const mealCases = JSON.parse(fs.readFileSync(fileURLToPath(new URL("./fixtures/meal-cases.json", import.meta.url)), "utf8"));
 const pageErrors = [];
 const dishPng = "/tmp/viva-dish-test.png";
 fs.writeFileSync(
@@ -769,6 +770,61 @@ await check("8f. nome de alimento sozinho é anotado sem IA", async () => {
   equal(meal.items[0].name, "Sardinha em óleo", "sardinha da base local");
   equal(meal.items[0].grams, 100, "porção padrão");
   equal((await getState()).aiCalls, 0, "não deveria chamar a IA");
+  await page.close();
+});
+
+for (const testCase of mealCases) {
+  await check(`8g. ${testCase.name}`, async () => {
+    await resetAll();
+    await seed(demoState({ days: {} }));
+    const page = await newPage();
+    await login(page, "A");
+    await waitMain(page);
+    await send(page, testCase.message);
+    await waitChat(page, "Anotei no");
+    const meal = await waitFor(async () => {
+      const row = await rowFor(USER_A.id);
+      const meals = row?.data.days[today()]?.meals || [];
+      return meals.length ? meals[0] : null;
+    });
+    equal(meal.items.length, testCase.expected.length, "quantidade de itens");
+    for (const expected of testCase.expected) {
+      const item = meal.items.find((entry) => entry.name === expected.name);
+      assert(item, `item ausente: ${expected.name}`);
+      equal(item.grams, expected.grams, `gramas de ${expected.name}`);
+    }
+    assert(Math.abs(meal.kcal - testCase.kcal) <= 2, `kcal ${meal.kcal} vs ${testCase.kcal}`);
+    await page.close();
+  });
+}
+
+await check("8h. preparação não vira alimento simples", async () => {
+  await resetAll();
+  await seed(demoState({ days: {} }));
+  await setConfig({ foodMode: "notfound" });
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "comi patê de sardinha");
+  await waitChat(page, "Não encontrei");
+  const row = await rowFor(USER_A.id);
+  equal((row?.data.days[today()]?.meals || []).length, 0, "não deveria anotar patê como sardinha");
+  await page.close();
+});
+
+await check("8i. pergunta sobre alimento não vira refeição", async () => {
+  await resetAll();
+  await seed(demoState({ days: {} }));
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "sardinha é saudável?");
+  await waitChat(page, "Uma dieta equilibrada");
+  const state = await getState();
+  equal(state.aiCalls, 1, "deveria chamar a IA");
+  assert(state.aiQuestions.includes("sardinha é saudável?"), "pergunta deveria chegar à IA");
+  const row = await rowFor(USER_A.id);
+  equal((row?.data.days[today()]?.meals || []).length, 0, "pergunta não deveria virar refeição");
   await page.close();
 });
 
