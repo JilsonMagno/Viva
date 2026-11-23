@@ -18,7 +18,7 @@
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
-  const APP_VERSION = "2.16.0";
+  const APP_VERSION = "2.16.1";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -1308,6 +1308,10 @@
     return `${corrected ? "Corrigi" : "Anotei"} no ${String(saved.label || "").toLowerCase()}: ${list}. Total da refeição: ${nf(saved.kcal)} kcal. Restam ${nf(left)} kcal hoje.${note}${sourceNote}${missing}`;
   }
 
+  function looksLikeCorrection(text) {
+    return /na verdade|corrig|corrija|troca|troque|em vez de|nao era|não era/.test(normalize(text));
+  }
+
   async function interpretMealAI(text) {
     if (!state?.profile?.aiEnabled) return null;
     const answer = await askAI(text, { task: "meal", search: false });
@@ -2240,11 +2244,18 @@
     const wordQuantity = /^(?:um|uma|meio|meia|dois|duas|três|tres|quatro|cinco|seis|sete|oito|nove|dez)\b/i.test(text);
     const nearFood = findFoodHits(head).length > 0 || /\b(g|gramas?|ml|colher|colheres|xícara|xícaras|fatia|fatias|unidade|unidades|porção|porcoes|prato|pratos|copo|copos|pote|potes|lata|latas|garrafa|garrafas)\b/.test(norm);
     const looksLikeMeal = /\b(comi|almocei|jantei|tomei|bebi|lanchei|merendei|registra|registre|registrar|anota|anote|anotar|adiciona|adicione|adicionar|na verdade|corrige|corrigir|corrija)\b/.test(norm) || /\b(cafe da manha|almoco|jantar|lanche)\b/.test(norm) || /^\s*(?:\d|½|1\/2)/.test(text) || (wordQuantity && nearFood) || isFoodOnly(text);
+    const correction = looksLikeCorrection(text);
     let aiInterpretation = null;
     if (looksLikeMeal && state.profile.aiEnabled) {
       aiInterpretation = await interpretMealAI(text);
+      if (correction && aiInterpretation?.intent !== "correction") {
+        return "Não consegui aplicar a correção com segurança. Diga a refeição, o alimento e a quantidade, por exemplo: “na verdade, no café da manhã, 1 fatia de queijo minas”.";
+      }
       const aiReply = await handleAIMeal(text, aiInterpretation);
       if (aiReply) return aiReply;
+    }
+    if (correction) {
+      return "Não consegui aplicar a correção com segurança. Diga a refeição, o alimento e a quantidade, por exemplo: “na verdade, no café da manhã, 1 fatia de queijo minas”.";
     }
     const meal = looksLikeMeal ? await parseMeal(text) : null;
     if (meal && meal.items.length) {
@@ -2254,7 +2265,7 @@
     if (meal?.unknown?.length) {
       return `Não encontrei dados confiáveis para ${meal.unknown.map((name) => `“${name}”`).join(", ")}. Não vou inventar valores. Informe a porção e as kcal, ou use um alimento da tabela.`;
     }
-    if (aiInterpretation?.intent === "other" && aiInterpretation.answer) return aiInterpretation.answer;
+    if (looksLikeMeal) return "Não consegui interpretar essa refeição com segurança. Diga o alimento e a quantidade, por exemplo: “2 ovos e 1 pão”.";
     if (state.profile.aiEnabled) return askAI(text);
     const local = localAnswer(norm);
     if (local) return local;

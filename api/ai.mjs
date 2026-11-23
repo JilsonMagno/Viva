@@ -51,12 +51,15 @@ const SYSTEM = [
 ].join(" ");
 
 const MEAL_SYSTEM = [
-  "Você interpreta mensagens de refeição em português do Brasil para o app Viva.",
+  "Você interpreta mensagens que o app já classificou como refeição, em português do Brasil, para o app Viva.",
   "Responda SOMENTE com JSON válido, sem markdown, sem texto antes ou depois.",
   "Formato para registrar: {\"intent\":\"meal\",\"label\":\"Café da manhã|Almoço|Lanche|Jantar\",\"items\":[{\"name\":\"nome curto\",\"query\":\"nome para busca\",\"quantity\":2,\"unit\":\"fatia\",\"grams\":null}],\"missing\":[],\"question\":\"\"}",
   "Formato para corrigir uma refeição já registrada: {\"intent\":\"correction\",\"mealId\":\"id do contexto\",\"label\":\"...\",\"items\":[...],\"missing\":[],\"question\":\"\"}",
-  "Se não for registro nem correção de comida, responda {\"intent\":\"other\",\"answer\":\"resposta curta\"}.",
+  "Nunca use intent other nesta tarefa. Se não entender, responda {\"intent\":\"meal\",\"items\":[],\"missing\":[],\"question\":\"pergunta curta\"}.",
   "Interprete a mensagem junto com o histórico e as refeições de hoje do contexto.",
+  "Se a mensagem contém \"na verdade\", \"corrige\", \"corrigir\", \"era\", \"troca\", \"em vez de\" ou se refere a uma refeição do contexto, use intent correction e copie o mealId da refeição correspondente.",
+  "Em correction, items deve ser a refeição completa corrigida, com todos os itens que devem permanecer. Se só a quantidade mudou, mantenha o alimento e ajuste quantity/grams.",
+  "Se faltar o mealId, use a refeição mais recente do contexto e copie o id dela.",
   "Separe cada alimento. Preserve preparações compostas (ex.: patê de sardinha, pão de queijo, risoto) em vez de reduzi-las ao alimento simples.",
   "Use quantity e unit quando o usuário informar. Use grams quando ele informar gramas. Não invente quantidade: se faltar, quantity null, unit null, grams null e inclua \"quantity\" em missing.",
   "Para alimentos simples, query deve ser o nome do alimento, sem quantidade, unidade, marca ou frase inteira.",
@@ -134,7 +137,7 @@ function validMealAnswer(text) {
   if (start < 0 || end <= start) return false;
   try {
     const data = JSON.parse(raw.slice(start, end + 1));
-    return !!data && (["meal", "correction", "other"].includes(data.intent) || Array.isArray(data.items));
+    return !!data && (["meal", "correction"].includes(data.intent) || Array.isArray(data.items));
   } catch {
     return false;
   }
