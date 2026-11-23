@@ -50,7 +50,7 @@ Testes:
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato usa um modelo gratuito com visão e um modelo de reserva; é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
 - A interpretação de refeição usa um modelo gratuito de texto/visão (`google/gemma-4-31b-it:free` no OpenRouter) e cai para o modelo de texto padrão se o primeiro não responder. O parser local só entra quando a IA está desligada ou falha.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.16.1`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.16.2`.
 
 ## O que depende da sua conta (não consigo criar por você)
 

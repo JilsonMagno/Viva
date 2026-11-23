@@ -353,13 +353,18 @@ export default async function handler(req, res) {
       continue;
     }
 
-    const content = data?.choices?.[0]?.message?.content;
+    const rawContent = data?.choices?.[0]?.message?.content;
+    const content = Array.isArray(rawContent)
+      ? rawContent.map((part) => (typeof part === "string" ? part : part?.text || "")).join("")
+      : rawContent;
     if (typeof content === "string" && content.trim() && (!isMealTask || validMealAnswer(content))) {
       answer = content.trim();
       break;
     }
     lastStatus = 502;
-    lastError = "O provedor não devolveu uma estimativa.";
+    lastError = isMealTask
+      ? `O provedor não devolveu uma estimativa válida. Retorno: ${String(content || "").slice(0, 240) || "vazio"}`
+      : "O provedor não devolveu uma estimativa.";
   }
 
   if (!answer) return json(res, lastStatus, { error: "provider_error", message: lastError });
