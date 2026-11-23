@@ -18,7 +18,7 @@
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
-  const APP_VERSION = "2.16.4";
+  const APP_VERSION = "2.16.5";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -1090,7 +1090,7 @@
     return per * (Number.isFinite(qty) ? qty : 1);
   }
 
-  async function parseMeal(text) {
+  async function parseMeal(text, options = {}) {
     const norm = normalize(text);
     const segments = mealSegments(text);
     const items = [];
@@ -1115,6 +1115,10 @@
       }
       const unknownItem = parseUnknownSegment(segment);
       if (!unknownItem) continue;
+      if (options.localOnly) {
+        unknown.push(unknownItem.rawName || unknownItem.name);
+        continue;
+      }
       const found = await lookupFood(unknownItem.name);
       if (!found) {
         unknown.push(unknownItem.rawName || unknownItem.name);
@@ -1316,6 +1320,57 @@
     if (!state?.profile?.aiEnabled) return null;
     const answer = await askAI(text, { task: "meal", search: false });
     return parseMealInterpretation(answer);
+  }
+
+  function correctionLabel(text) {
+    const norm = normalize(text);
+    if (/cafe da manha/.test(norm)) return "Café da manhã";
+    if (/almoco/.test(norm)) return "Almoço";
+    if (/jantar/.test(norm)) return "Jantar";
+    if (/lanche/.test(norm)) return "Lanche";
+    return "";
+  }
+
+  function itemTokens(name) {
+    return new Set(normalize(name).split(/\s+/).filter((token) => token.length >= 3));
+  }
+
+  function sameFood(a, b) {
+    if (a.foodId && b.foodId && a.foodId === b.foodId) return true;
+    const left = itemTokens(a.name);
+    const right = itemTokens(b.name);
+    return [...left].some((token) => right.has(token));
+  }
+
+  async function localCorrection(text) {
+    const meals = dayData().meals || [];
+    if (!meals.length) return null;
+    const label = correctionLabel(text);
+    const target = label
+      ? [...meals].reverse().find((meal) => normalize(meal.label) === normalize(label))
+      : meals[meals.length - 1];
+    if (!target) return null;
+    const cleaned = text
+      .replace(/\b(?:na verdade|corrige|corrigir|corrija|correcao|correção|troca|troque|em vez de)\b/gi, " ")
+      .replace(/\b(?:era|eram)\b/gi, " ")
+      .replace(/\b(?:no|na)\s+(?:cafe da manha|almoco|jantar|lanche)\b/gi, " ")
+      .trim();
+    const parsed = await parseMeal(cleaned, { localOnly: true });
+    if (!parsed?.items?.length || parsed.unknown?.length) return null;
+    const only = /\b(?:so|somente|apenas)\b/.test(normalize(text));
+    const merged = only ? [] : target.items.map((item) => ({ ...item }));
+    for (const item of parsed.items) {
+      const index = merged.findIndex((old) => sameFood(old, item));
+      if (index >= 0) merged[index] = item;
+      else merged.push(item);
+    }
+    if (!merged.length) return null;
+    target.items = merged;
+    recalcMeal(target);
+    queueSave();
+    renderToday();
+    renderDiary();
+    return mealSavedReply(target, parsed.unknown, parsed.notes, true);
   }
 
   async function handleAIMeal(text, interpretation) {
@@ -2275,6 +2330,8 @@
     if (looksLikeMeal && state.profile.aiEnabled) {
       aiInterpretation = await interpretMealAI(text);
       if (correction && aiInterpretation?.intent !== "correction") {
+        const local = await localCorrection(text);
+        if (local) return local;
         return "Não consegui aplicar a correção com segurança. Diga a refeição, o alimento e a quantidade, por exemplo: “na verdade, no café da manhã, 1 fatia de queijo minas”.";
       }
       const usable = aiInterpretation && (aiInterpretation.intent === "correction" || aiInterpretation.items?.length);
@@ -2282,6 +2339,8 @@
       if (aiReply) return aiReply;
     }
     if (correction) {
+      const local = await localCorrection(text);
+      if (local) return local;
       return "Não consegui aplicar a correção com segurança. Diga a refeição, o alimento e a quantidade, por exemplo: “na verdade, no café da manhã, 1 fatia de queijo minas”.";
     }
     const meal = looksLikeMeal ? await parseMeal(text) : null;

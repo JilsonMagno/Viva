@@ -41,16 +41,16 @@ Testes:
 - `node tests/report.test.mjs`: 5 verificações do endpoint de relatórios, incluindo JWT, gravação do usuário, limite de contexto e fallback quando a tabela falha.
 - `node tests/food-api.test.mjs`: 11 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g, ausência de dados e recusa de produtos preparados que não correspondem ao alimento pedido.
 - `tests/fixtures/meal-cases.json`: casos de regressão de refeições. Cada caso fixa a mensagem, os itens esperados, as gramas e as kcal totais; a suíte falha se qualquer um mudar.
-- `node tests/e2e.test.mjs`: 54 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, nome de alimento sozinho, regressão de refeições compostas, preparação que não vira alimento simples, pergunta que não vira refeição, IA interpretando quantidade antes da tabela, correção de refeição pelo histórico, correção sem JSON que não altera a refeição, resposta vazia da IA que cai no parser local, botão Reportar, fatias de queijo, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 55 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, nome de alimento sozinho, regressão de refeições compostas, preparação que não vira alimento simples, pergunta que não vira refeição, IA interpretando quantidade antes da tabela, correção de refeição pelo histórico, correção sem JSON que não altera a refeição, resposta vazia da IA que cai no parser local, correção com texto solto que usa o parser local, botão Reportar, fatias de queijo, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as sete suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 239.645 bytes crus, 60.969 bytes em gzip e 50.790 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 241.881 bytes crus, 61.449 bytes em gzip e 51.231 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato usa um modelo gratuito com visão e um modelo de reserva; é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
 - A interpretação de refeição usa um modelo gratuito de texto/visão (`google/gemma-4-31b-it:free` no OpenRouter) e cai para `google/gemma-4-26b-a4b-it:free` se o primeiro não devolver JSON válido. O parser local só entra quando a IA está desligada ou falha.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.16.4`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.16.5`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -155,7 +155,7 @@ Perfis antigos com a IA incluída disponível e sem escolha registrada ligam a I
 
 A pesquisa na web só entra em temas de saúde ou quando o usuário pede explicitamente. Mensagens curtas como “Testando”, “oi” e “obrigado” recebem resposta curta, sem fontes e sem discurso de redirecionamento.
 
-Refeições com vários itens reconhecem plurais, alimentos compostos e quantidades por unidade, como “2 iogurtes grego 90 g cada”. A IA separa os itens e o app confere a base TACO/USDA antes do Open Food Facts. Um nome de alimento sozinho, como “sardinha”, também é interpretado e anotado na base local. Produtos preparados, como “patê de sardinha”, não substituem o alimento simples quando a busca é por “sardinha”. Correções como “na verdade era queijo minas” usam o id da refeição que está no contexto e substituem a refeição, sem duplicar. Se a IA não devolver JSON estruturado de correção, o app não altera nada e pede a correção de novo, em vez de aceitar texto solto.
+Refeições com vários itens reconhecem plurais, alimentos compostos e quantidades por unidade, como “2 iogurtes grego 90 g cada”. A IA separa os itens e o app confere a base TACO/USDA antes do Open Food Facts. Um nome de alimento sozinho, como “sardinha”, também é interpretado e anotado na base local. Produtos preparados, como “patê de sardinha”, não substituem o alimento simples quando a busca é por “sardinha”. Correções como “na verdade era queijo minas” usam o id da refeição que está no contexto e substituem a refeição, sem duplicar. Se a IA não devolver JSON estruturado de correção, o app tenta o parser local com a tabela TACO/USDA; se não reconhecer o alimento, pede a correção de novo em vez de aceitar texto solto.
 
 ## Editar refeição
 

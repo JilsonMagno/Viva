@@ -915,7 +915,54 @@ await check("8l. IA corrige uma refeição usando o histórico do chat", async (
   await page.close();
 });
 
-await check("8m. correção sem JSON estruturado não altera a refeição", async () => {
+await check("8m. correção com texto solto da IA usa o parser local", async () => {
+  await resetAll();
+  const day = today();
+  await seed(demoState({
+    days: {
+      [day]: {
+        meals: [{
+          id: "meal-ai",
+          at: new Date().toISOString(),
+          label: "Café da manhã",
+          kcal: 348,
+          p: 15.5,
+          c: 30.3,
+          f: 16.5,
+          items: [
+            { name: "Queijo muçarela", grams: 60, kcal: 198, p: 13.6, c: 1.8, f: 15.1 },
+            { name: "Pão francês", grams: 50, kcal: 150, p: 4, c: 29.4, f: 1.5 }
+          ]
+        }],
+        waterMl: 0,
+        activities: []
+      }
+    }
+  }));
+  await setConfig({
+    mealAnswer: JSON.stringify({
+      intent: "other",
+      answer: "Corrigi: queijo minas (1 fatia, ~100 kcal). Agora a refeição tem cerca de 100 kcal."
+    })
+  });
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "na verdade era queijo minas");
+  await waitChat(page, "Corrigi no café da manhã");
+  const meal = await waitFor(async () => {
+    const row = await rowFor(USER_A.id);
+    const meals = row?.data.days[today()]?.meals || [];
+    return meals.length === 1 && meals[0].items?.[0]?.name === "Queijo minas" ? meals[0] : null;
+  });
+  equal(meal.items.length, 2, "manteve o pão e trocou o queijo");
+  equal(meal.items[0].grams, 30, "uma fatia");
+  equal(meal.items[1].name, "Pão francês", "pão preservado");
+  equal(meal.kcal, 229, "total corrigido");
+  await page.close();
+});
+
+await check("8o. correção sem alimento reconhecível pede para repetir", async () => {
   await resetAll();
   const day = today();
   await seed(demoState({
@@ -937,20 +984,16 @@ await check("8m. correção sem JSON estruturado não altera a refeição", asyn
     }
   }));
   await setConfig({
-    mealAnswer: JSON.stringify({
-      intent: "other",
-      answer: "Corrigi: queijo minas (1 fatia, ~100 kcal). Agora a refeição tem cerca de 100 kcal."
-    })
+    mealAnswer: JSON.stringify({ intent: "other", answer: "Corrigi." })
   });
   const page = await newPage();
   await login(page, "A");
   await waitMain(page);
-  await send(page, "na verdade era queijo minas");
+  await send(page, "na verdade estava errado");
   await waitChat(page, "Não consegui aplicar a correção com segurança");
   const row = await rowFor(USER_A.id);
   const meals = row?.data.days[today()]?.meals || [];
-  equal(meals.length, 1, "uma refeição");
-  equal(meals[0].items[0].name, "Queijo muçarela", "não alterou sem JSON");
+  equal(meals[0].items[0].name, "Queijo muçarela", "não alterou");
   equal(meals[0].items[0].grams, 60, "manteve a porção");
   await page.close();
 });
@@ -999,7 +1042,7 @@ await check("8j. botão Reportar envia mensagem e contexto", async () => {
     return current.reports?.length ? current.reports[0] : null;
   });
   equal(report.question, "sardinha", "pergunta enviada");
-  equal(report.version, "2.16.4", "versão enviada");
+  equal(report.version, "2.16.5", "versão enviada");
   equal(report.profile.name, undefined, "nome não deve ir no relatório");
   assert(report.today.meals.length === 1, "refeição deveria ir no contexto");
   await page.close();
