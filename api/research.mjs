@@ -142,13 +142,13 @@ async function wikipedia(query) {
     }
   }));
   const terms = meaningfulTerms(query);
-  return pages
+  const scored = pages
     .filter(Boolean)
     .map((page) => ({ page, score: titleScore(page, terms) }))
     .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
-    .map((item) => item.page);
+    .sort((a, b) => b.score - a.score);
+  const exact = scored.filter((item) => item.score >= Math.min(2, terms.length));
+  return (exact.length ? exact : scored).slice(0, 3).map((item) => item.page);
 }
 
 async function pubmed(query) {
