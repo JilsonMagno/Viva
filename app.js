@@ -733,14 +733,14 @@
     { id: "salmao", name: "Salmão grelhado", aliases: ["salmao"], portion: 100, kcal: 242.7, p: 26.1, c: 0, f: 14.5, src: "TACO", ref: "317" },
     { id: "atum", name: "Atum em água", aliases: ["atum"], portion: 100, kcal: 116, p: 25.5, c: 0, f: 0.8, src: "USDA", ref: "171986" },
     { id: "sardinha", name: "Sardinha em óleo", aliases: ["sardinha", "sardinha em óleo"], portion: 100, kcal: 285, p: 15.9, c: 0, f: 24, src: "TACO", ref: "319" },
-    { id: "camarao", name: "Camarão cozido", aliases: ["camarao"], portion: 100, kcal: 90, p: 19, c: 0, f: 1, src: "TACO", ref: "284" },
+    { id: "camarao", name: "Camarão cozido", aliases: ["camarao", "camaroes"], portion: 100, unitGrams: 10, kcal: 90, p: 19, c: 0, f: 1, src: "TACO", ref: "284" },
     { id: "linguica", name: "Linguiça de porco grelhada", aliases: ["linguica", "linguiça", "linguiça de porco"], portion: 50, kcal: 296.5, p: 23.2, c: 0, f: 21.9, src: "TACO", ref: "423" },
     { id: "presunto", name: "Presunto", aliases: ["presunto"], portion: 30, kcal: 93.7, p: 14.3, c: 2.1, f: 2.7, src: "TACO", ref: "439" },
     { id: "queijo-mucarela", name: "Queijo muçarela", aliases: ["queijo", "mucarela", "mussarela", "queijo mucarela"], portion: 30, kcal: 329.9, p: 22.6, c: 3, f: 25.2, src: "TACO", ref: "463" },
     { id: "queijo-minas", name: "Queijo minas", aliases: ["queijo minas", "queijo frescal"], portion: 30, kcal: 264.3, p: 17.4, c: 3.2, f: 20.2, src: "TACO", ref: "461" },
-    { id: "requeijao", name: "Requeijão", aliases: ["requeijao"], portion: 30, kcal: 256.6, p: 9.6, c: 2.4, f: 23.4, src: "TACO", ref: "468" },
+    { id: "requeijao", name: "Requeijão", aliases: ["requeijao", "catupiry"], portion: 30, kcal: 256.6, p: 9.6, c: 2.4, f: 23.4, src: "TACO", ref: "468" },
     { id: "iogurte", name: "Iogurte natural", aliases: ["iogurte", "iogurte natural"], portion: 170, kcal: 51.5, p: 4.1, c: 1.9, f: 3, src: "TACO", ref: "448" },
-    { id: "iogurte-grego", name: "Iogurte grego zero", aliases: ["iogurte grego", "iogurte grego zero"], portion: 170, kcal: 59, p: 10.2, c: 3.6, f: 0.4, src: "USDA", ref: "170894" },
+    { id: "iogurte-grego", name: "Iogurte grego zero", aliases: ["iogurte grego", "iogurtes grego", "iogurte grego zero"], portion: 170, unitGrams: 90, kcal: 59, p: 10.2, c: 3.6, f: 0.4, src: "USDA", ref: "170894" },
     { id: "leite", name: "Leite integral", aliases: ["leite", "leite integral"], portion: 200, kcal: 61, p: 3.1, c: 4.8, f: 3.2, src: "USDA", ref: "171265" },
     { id: "leite-desnatado", name: "Leite desnatado", aliases: ["leite desnatado"], portion: 200, kcal: 34, p: 3.4, c: 5, f: 0.1, src: "USDA", ref: "171269" },
     { id: "leite-aveia", name: "Leite de aveia", aliases: ["leite de aveia"], portion: 200, kcal: 45, p: 0.7, c: 5.4, f: 2.3, src: "USDA", ref: "2705412" },
@@ -791,6 +791,13 @@
     { id: "doce-leite", name: "Doce de leite", aliases: ["doce de leite", "doce de leite cremoso"], portion: 30, kcal: 306.3, p: 5.5, c: 59.5, f: 6, src: "TACO", ref: "501" },
   ];
 
+  // Preparações compostas: estimativas para pratos prontos, fora da base oficial.
+  const DISHES = [
+    { id: "contra-file", name: "Contra filé grelhado", aliases: ["contra file", "contra-file", "contrafile", "contra file com gordura"], portion: 100, kcal: 194, p: 32.4, c: 0, f: 7.3, src: "Estimativa TACO/USDA", ref: "composição" },
+    { id: "camarao-empanado", name: "Camarão empanado com catupiry", aliases: ["camarao empanado com catupiry", "camaroes empanados com catupiry", "camarao empanado", "camaroes empanados"], portion: 15, unitGrams: 15, kcal: 280, p: 12, c: 20, f: 17, src: "Estimativa TACO/USDA", ref: "composição" },
+    { id: "risoto", name: "Risoto de arroz com camarão", aliases: ["risoto de arroz com camarao", "risoto de arroz com camaroes", "risoto de arroz", "risoto"], portion: 100, kcal: 145, p: 5, c: 21, f: 4, src: "Estimativa TACO/USDA", ref: "composição" }
+  ];
+
   // Preços médios estimados por 100 g (nov/2026). Variam por região e mercado.
   const MARKET = [
     { id: "feijao", foodId: "feijao-carioca", label: "Feijão carioca", price: 0.8, maxPerDay: 200 },
@@ -837,7 +844,7 @@
   }
 
   const NUMBER_WORDS = { um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, meio: 0.5, meia: 0.5 };
-  const FOOD_INDEX = FOODS.map((food) => ({
+  const FOOD_INDEX = [...FOODS, ...DISHES].map((food) => ({
     food,
     aliases: Array.from(new Set([food.name, ...food.aliases])).map(normalize)
   }));
@@ -855,6 +862,10 @@
     }
     rest = rest.replace(/^(?:de|do|da|dos|das)\b\s*/, "").trim();
     return !rest;
+  }
+
+  function isFoodPrefix(prefix) {
+    return isQuantityPrefix(prefix) || /(?:^|[\s,;+])(?:com|e|mais)\s+/.test(prefix);
   }
 
   function findFoodHits(text) {
@@ -880,8 +891,7 @@
     hits.sort((a, b) => a.index - b.index || (b.end - b.index) - (a.end - a.index));
     const chosen = [];
     for (const hit of hits) {
-      if (!isQuantityPrefix(text.slice(0, hit.index))) continue;
-      if (text.slice(hit.end).trim()) continue;
+      if (!isFoodPrefix(text.slice(0, hit.index))) continue;
       if (chosen.some((c) => hit.index < c.end && c.index < hit.end)) continue;
       chosen.push(hit);
     }
@@ -919,9 +929,9 @@
     const amount = window.match(new RegExp(`${AMOUNT_TOKEN}\\s*(?:de\\s+)?$`));
     if (amount) {
       const qty = amountValue(amount[1]);
-      if (Number.isFinite(qty)) return qty * food.portion;
+      if (Number.isFinite(qty)) return qty * (food.unitGrams || food.portion);
     }
-    return food.portion;
+    return food.unitGrams || food.portion;
   }
 
   function detectMealLabel(text) {
@@ -936,7 +946,7 @@
     return "Jantar";
   }
 
-  const MEAL_SEPARATOR = /\s*(?:,|;|\+|\be\b|\bcom\b|\bmais\b)\s*/;
+  const MEAL_SEPARATOR = /\s*(?:,|;|\+|\be\b|\bmais\b)\s*/;
   const UNKNOWN_UNITS = [
     { re: /^colher(?:es)?\s+de\s+sopa\b/, grams: 15 },
     { re: /^colher(?:es)?\s+de\s+cha\b/, grams: 5 },
@@ -963,8 +973,8 @@
 
   function mealSegments(text) {
     const norm = normalize(text)
-      .replace(/^(comi|almocei|jantei|tomei|lanchei|merendei|hoje|agora)\s+/, "")
       .replace(/\b(?:no|na)\s+(?:cafe da manha|almoco|jantar|lanche)\b/g, " ")
+      .replace(/^(?:(?:hoje|agora|comi|almocei|jantei|tomei|lanchei|merendei)\s+)+/, "")
       .replace(/\s+/g, " ")
       .trim();
     return norm.split(MEAL_SEPARATOR).map((part) => part.trim()).filter((part) => part.length > 1);
@@ -1053,6 +1063,18 @@
     }
   }
 
+  function gramsFromTrailingUnit(segment, hit) {
+    const after = segment.slice(hit.end);
+    const match = after.match(/\b(\d+(?:[.,]\d+)?)\s*(?:g|gramas?|ml)\b\s*(?:cada|por\s+unidade|a\s+unidade)\b/i);
+    if (!match) return null;
+    const per = amountValue(match[1]);
+    if (!Number.isFinite(per)) return null;
+    const before = segment.slice(0, hit.index);
+    const qtyMatch = before.match(new RegExp(`${AMOUNT_TOKEN}\\s*(?:de\\s+)?$`));
+    const qty = qtyMatch ? amountValue(qtyMatch[1]) : 1;
+    return per * (Number.isFinite(qty) ? qty : 1);
+  }
+
   async function parseMeal(text) {
     const norm = normalize(text);
     const segments = mealSegments(text);
@@ -1062,7 +1084,7 @@
       const hits = findFoodHits(maskUnits(segment));
       if (hits.length) {
         for (const hit of hits) {
-          const grams = quantityBefore(segment, hit.index, hit.food);
+          const grams = gramsFromTrailingUnit(segment, hit) ?? quantityBefore(segment, hit.index, hit.food);
           const factor = grams / 100;
           items.push({
             foodId: hit.food.id,

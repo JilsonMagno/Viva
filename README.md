@@ -15,7 +15,7 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 - Dashboard completo em Evolução: perfil, metas, hoje, médias de 7 e 14 dias, peso, alimentos mais registrados e histórico recente, com impressão/PDF.
 - Exportar os dados em JSON e apagar tudo, com confirmação em dois toques.
 - Instalável no celular (tela inicial), com casca em cache.
-- Base de 83 alimentos com valores por 100 g, fonte e referência por item (TACO 4ª ed. e USDA FoodData Central).
+- Base de 83 alimentos com valores por 100 g, fonte e referência por item (TACO 4ª ed. e USDA FoodData Central), mais 3 preparações compostas estimadas.
 - Quantidades por texto: colheres de sopa/chá, colheres comuns, copos, xícaras, fatias, gramas, ml, unidades e porções. `4 colheres de aveia` e `1 colher de aveia` geram porções e calorias diferentes.
 - Nomes fora da tabela: o app consulta o Open Food Facts, usa os valores por 100 g e mostra a fonte. Se não houver dados completos, não anota e não inventa valores.
 
@@ -38,15 +38,15 @@ Testes:
 - `node tests/ai-proxy.test.mjs`: 12 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter, contexto do usuário, pesquisa web, pergunta pessoal sem pesquisa e recusa de foto no Groq.
 - `node tests/research.test.mjs`: 18 verificações da limpeza da consulta, do filtro de pesquisa e da relevância das fontes.
 - `node tests/food-api.test.mjs`: 10 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g e ausência de dados.
-- `node tests/e2e.test.mjs`: 36 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 37 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as cinco suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 220.252 bytes crus, 56.084 bytes em gzip e 47.117 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 221.957 bytes crus, 56.520 bytes em gzip e 47.465 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.15.4`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.15.5`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -66,7 +66,7 @@ Depois disso, abra o link no celular e toque em *Adicionar à tela inicial*.
 
 O assistente entende a quantidade antes do alimento: `4 colheres de aveia` usa 60 g (4 × 15 g), enquanto `1 colher de aveia` usa 15 g. Também aceita colher de sopa (15 g), colher de chá (5 g), copo (250 g), xícara (200 g), fatia (30 g), gramas, ml, litros, unidades, porções, prato, concha, scoop, barra, lata, pacote e pote.
 
-Quando o nome não está nos 83 alimentos da tabela, o app consulta o **Open Food Facts** pelo endpoint `/api/food`, valida o JWT do Supabase e usa os valores por 100 g do produto encontrado. Se o usuário informar uma unidade (ex.: `1 Big Mac`), o app usa o peso da porção cadastrada no produto (ex.: 219 g) em vez de assumir 100 g. O Big Mac, por exemplo, fica com 219 g e cerca de 563 kcal. A resposta mostra `Fonte: Open Food Facts`. Se a base não tiver kcal, proteína, carboidratos e gordura completos, o app **não anota e não inventa**: pede a porção e as kcal ou o uso de um alimento da tabela. A IA não é usada para estimar valores nutricionais de nomes desconhecidos.
+Quando o nome não está nos 83 alimentos da tabela nem nas 3 preparações, o app consulta o **Open Food Facts** pelo endpoint `/api/food`, valida o JWT do Supabase e usa os valores por 100 g do produto encontrado. Se o usuário informar uma unidade (ex.: `1 Big Mac`), o app usa o peso da porção cadastrada no produto (ex.: 219 g) em vez de assumir 100 g. O Big Mac, por exemplo, fica com 219 g e cerca de 563 kcal. A resposta mostra `Fonte: Open Food Facts`. Se a base não tiver kcal, proteína, carboidratos e gordura completos, o app **não anota e não inventa**: pede a porção e as kcal ou o uso de um alimento da tabela. A IA não é usada para estimar valores nutricionais de nomes desconhecidos.
 
 ## Padronização antes da busca
 
@@ -150,6 +150,8 @@ No celular, ao tocar no campo de mensagem, o chat ocupa a tela acima do teclado.
 Perfis antigos com a IA incluída disponível e sem escolha registrada ligam a IA automaticamente. Quem desligar em Perfil fica desligado e recebe uma orientação clara no chat, em vez de “Ainda não entendi”.
 
 A pesquisa na web só entra em temas de saúde ou quando o usuário pede explicitamente. Mensagens curtas como “Testando”, “oi” e “obrigado” recebem resposta curta, sem fontes e sem discurso de redirecionamento.
+
+Refeições com vários itens reconhecem plurais, alimentos compostos e quantidades por unidade, como “2 iogurtes grego 90 g cada”. A base TACO/USDA é consultada antes do Open Food Facts.
 
 ## Editar refeição
 
@@ -243,7 +245,7 @@ Os limites gratuitos mudam com frequência. Confira a página de preços/limites
 
 ## Base de alimentos e fontes
 
-Os 83 alimentos ficam em `FOODS` (`app.js`) com valores por 100 g. Cada item tem `src` e `ref`:
+Os 83 alimentos ficam em `FOODS` (`app.js`) com valores por 100 g. As 3 preparações compostas ficam em `DISHES`. Cada item tem `src` e `ref`:
 
 - **TACO** — *Tabela Brasileira de Composição de Alimentos*, 4ª edição (2011), NEPA/UNICAMP. 64 itens. `ref` é o número do alimento na tabela oficial. Fonte: <https://nepa.unicamp.br/tabela-taco/> (planilha oficial `Taco-4a-Edicao.xlsx`). Os 64 valores foram conferidos item a item contra essa planilha: 64/64 batem.
 - **USDA** — *FoodData Central*, do Departamento de Agricultura dos Estados Unidos. 19 itens. `ref` é o `fdcId`. Foram usados o *SR Legacy* (2018-04) e o *FNDDS* (2024-10-31). Fonte: <https://fdc.nal.usda.gov/>. Os 19 valores também foram conferidos contra os CSVs oficiais: 19/19 batem.
@@ -262,7 +264,7 @@ Valores de rótulos de produtos industrializados podem variar. A base serve para
 ## Limites conhecidos
 
 - Se dois aparelhos salvarem ao mesmo tempo, vale o último envio.
-- A base tem 83 alimentos, com valores por 100 g da TACO 4ª ed. (NEPA/UNICAMP) e do USDA FoodData Central. Rótulos de produtos industrializados podem variar. Confira a embalagem quando ela existir.
+- A base tem 83 alimentos, com valores por 100 g da TACO 4ª ed. (NEPA/UNICAMP) e do USDA FoodData Central. As 3 preparações compostas usam estimativas e aparecem como tal. Rótulos de produtos industrializados podem variar. Confira a embalagem quando ela existir.
 - As metas são estimativas padrão (Mifflin-St Jeor com fator de atividade 1,5). Não substituem orientação de nutricionista ou médico.
 - A IA do servidor tem limite de 30 perguntas/min por usuário; a cota do provedor é do dono. A chave própria usa a cota do provedor do usuário.
 - A chave própria fica no `localStorage`; como qualquer credencial no navegador, ela pode ser lida por XSS ou por quem tiver acesso ao dispositivo. Use uma chave com limite de gasto e revogue se o dispositivo for compartilhado. A chave é removida no logout e ao apagar os dados.

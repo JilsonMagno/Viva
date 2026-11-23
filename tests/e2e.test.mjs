@@ -725,6 +725,33 @@ await check("8d. conversa livre sobre alimento não vira registro", async () => 
   await page.close();
 });
 
+await check("8e. refeição composta usa a base local e quantidades por unidade", async () => {
+  await resetAll();
+  await seed(demoState({ days: {} }));
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "Hoje comi 2 iogurtes grego 90 g cada, 100g contra file com gordura, 6 camaroes empanados com catupiry, 300g de risoto de arroz com camaroes pequenos, 2 copos de agua de coco.");
+  const meal = await waitFor(async () => {
+    const row = await rowFor(USER_A.id);
+    const meals = row?.data.days[today()]?.meals || [];
+    return meals.length ? meals[0] : null;
+  });
+  equal(meal.items.length, 5, "deveria anotar os cinco itens");
+  const byName = Object.fromEntries(meal.items.map((item) => [item.name, item]));
+  assert(byName["Iogurte grego zero"], "iogurte grego");
+  assert(byName["Contra filé grelhado"], "contra filé");
+  assert(byName["Camarão empanado com catupiry"], "camarão empanado");
+  assert(byName["Risoto de arroz com camarão"], "risoto");
+  assert(byName["Água de coco"], "água de coco");
+  equal(byName["Iogurte grego zero"].grams, 180, "2 potes de 90 g");
+  equal(byName["Contra filé grelhado"].grams, 100, "100 g de contra filé");
+  equal(byName["Camarão empanado com catupiry"].grams, 90, "6 unidades de 15 g");
+  equal(byName["Risoto de arroz com camarão"].grams, 300, "300 g de risoto");
+  equal(byName["Água de coco"].grams, 500, "2 copos de 250 ml");
+  await page.close();
+});
+
 await check("9. IA desligada e falha da IA não quebram o app", async () => {
   await resetAll();
   const base = demoState({ days: {} });
