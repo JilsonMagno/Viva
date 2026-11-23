@@ -140,7 +140,7 @@
   function emptyState() {
     return {
       version: VERSION,
-      profile: { name: "", age: null, heightCm: null, weightKg: null, goal: "maintain", aiEnabled: false, onboardedAt: null },
+      profile: { name: "", age: null, heightCm: null, weightKg: null, goal: "maintain", aiEnabled: false, aiChoice: "auto", onboardedAt: null },
       targets: null,
       days: {},
       weights: [],
@@ -479,7 +479,7 @@
     show("screen-main");
     setView(currentView || localStorage.getItem(LS_VIEW) || "hoje");
     renderAll();
-    loadAIServerConfig();
+    loadAIServerConfig().then(enableAIOnce);
   }
 
   function setView(view) {
@@ -569,7 +569,8 @@
     button.textContent = "Salvando…";
     await loadAIServerConfig();
     state = emptyState();
-    state.profile = { ...profile, aiEnabled: !!(AI_SERVER || loadAIKey()), onboardedAt: nowIso() };
+    const aiEnabled = !!(AI_SERVER || loadAIKey());
+    state.profile = { ...profile, aiEnabled, aiChoice: aiEnabled ? "on" : "auto", onboardedAt: nowIso() };
     state.targets = calcTargets(profile);
     state.weights = [{ date: ymd(), kg: profile.weightKg }];
     const ok = await saveNow();
@@ -596,6 +597,7 @@
     };
     if (AI_ENDPOINT && !AI_SERVER && !loadAIKey()) await loadAIServerConfig();
     profile.aiEnabled = $("#pf-ai").checked && (!AI_ENDPOINT || !!AI_SERVER || !!loadAIKey());
+    profile.aiChoice = profile.aiEnabled ? "on" : "off";
     const errors = validateProfile(profile);
     markFields(errors, { age: "pf-age", height: "pf-height", weight: "pf-weight" });
     const errorBox = $("#profile-error");
@@ -1420,6 +1422,16 @@
     return !!activeAIConfig()?.vision;
   }
 
+  function enableAIOnce() {
+    if (!state?.profile || state.profile.aiEnabled || state.profile.aiChoice === "off") return;
+    if (!AI_SERVER && !loadAIKey()) return;
+    state.profile.aiEnabled = true;
+    state.profile.aiChoice = "on";
+    queueSave();
+    renderChat();
+    renderAISettings();
+  }
+
   async function loadAIServerConfig() {
     if (!AI_ENDPOINT) return null;
     try {
@@ -1434,6 +1446,7 @@
     }
     if (AI_ENDPOINT && !AI_SERVER && !loadAIKey() && state?.profile?.aiEnabled) {
       state.profile.aiEnabled = false;
+      state.profile.aiChoice = "auto";
       queueSave();
       renderChat();
     }
@@ -1930,6 +1943,8 @@
   }
 
   async function handleMessage(text) {
+    if (!state.profile.aiEnabled && AI_ENDPOINT && !AI_SERVER && !loadAIKey()) await loadAIServerConfig();
+    enableAIOnce();
     const norm = normalize(text);
     const question = isQuestion(text);
     const shopping = parseBudgetQuestion(text);
@@ -1940,7 +1955,10 @@
     if (question && !RECORDING.test(norm)) {
       const local = localAnswer(norm);
       if (!state.profile.aiEnabled) {
-        return local || "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso responder sobre proteína, calorias, água, resumo e sugestão de jantar.";
+        if (local) return local;
+        return activeAIConfig()
+          ? "A IA está disponível, mas está desligada. Ligue em Perfil para conversar livremente sobre saúde."
+          : "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso responder sobre proteína, calorias, água, resumo e sugestão de jantar.";
       }
       const answer = await askAI(text);
       if (local && /(Não consegui falar|não foi configurada|não está configurada|Configure sua chave|offline|Muitas perguntas|A IA recusou)/i.test(answer)) {
@@ -1971,7 +1989,11 @@
     }
     const shoppingIntent = /\b(comprar|compra|mercado|supermercado|preço|preco|onde encontrar)\b/.test(norm);
     if (shoppingIntent && !RECORDING.test(norm)) {
-      if (!state.profile.aiEnabled) return "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso anotar refeições, água, atividade e peso.";
+      if (!state.profile.aiEnabled) {
+        return activeAIConfig()
+          ? "A IA está disponível, mas está desligada. Ligue em Perfil para conversar sobre compras e alimentação."
+          : "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso anotar refeições, água, atividade e peso.";
+      }
       return askAI(text);
     }
     const head = text.trim().split(/\s+/).slice(0, 3).join(" ");
@@ -1997,6 +2019,7 @@
     if (state.profile.aiEnabled) return askAI(text);
     const local = localAnswer(norm);
     if (local) return local;
+    if (activeAIConfig()) return "A IA está disponível, mas está desligada. Ligue em Perfil para conversar sobre qualquer assunto de saúde.";
     return "Ainda não entendi. Tente “comi 2 ovos e um pão”, “bebi 500 ml de água”, “corri 30 min” ou “peso 78,5”.";
   }
 
@@ -2789,6 +2812,7 @@
     saveAIKey({ provider, model, key: key || existing.key });
     if (state?.profile) {
       state.profile.aiEnabled = true;
+      state.profile.aiChoice = "on";
       queueSave();
     }
     renderAISettings();
@@ -2798,7 +2822,10 @@
 
   function clearAISettings() {
     clearAIKey();
-    if (state?.profile) state.profile.aiEnabled = !!AI_SERVER;
+    if (state?.profile) {
+      state.profile.aiEnabled = !!AI_SERVER;
+      state.profile.aiChoice = AI_SERVER ? "on" : "auto";
+    }
     const toggle = $("#pf-ai");
     if (toggle) toggle.checked = !!state?.profile?.aiEnabled;
     if (state) queueSave();
@@ -3148,6 +3175,7 @@
       return;
     }
     state.profile.aiEnabled = on;
+    state.profile.aiChoice = on ? "on" : "off";
     queueSave();
     renderChat();
     renderAISettings();

@@ -38,15 +38,15 @@ Testes:
 - `node tests/ai-proxy.test.mjs`: 12 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter, contexto do usuário, pesquisa web, pergunta pessoal sem pesquisa e recusa de foto no Groq.
 - `node tests/research.test.mjs`: 8 verificações da limpeza da consulta e da relevância das fontes de pesquisa.
 - `node tests/food-api.test.mjs`: 10 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g e ausência de dados.
-- `node tests/e2e.test.mjs`: 35 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 36 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as cinco suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 218.991 bytes crus, 55.791 bytes em gzip e 46.915 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 220.252 bytes crus, 56.084 bytes em gzip e 47.117 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.15.1`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.15.2`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -146,6 +146,8 @@ Perguntas sobre os seus próprios dados (“quantas calorias comi hoje?”, “q
 O registro continua determinístico: só vira refeição quando a mensagem tem um verbo explícito (“comi”, “registra”, “anota”) ou começa com quantidade (“2 ovos”, “100 g de arroz”). “Quero saber sobre arroz integral” é conversa; “2 ovos e um pão” é registro. As respostas locais prontas só entram quando a IA está desligada ou falha.
 
 No celular, ao tocar no campo de mensagem, o chat ocupa a tela acima do teclado. Cabeçalho, sugestões, aviso e abas saem de cena; o histórico fica visível e rola para a última mensagem enquanto você digita. Ao sair do campo, a tela volta ao normal.
+
+Perfis antigos com a IA incluída disponível e sem escolha registrada ligam a IA automaticamente. Quem desligar em Perfil fica desligado e recebe uma orientação clara no chat, em vez de “Ainda não entendi”.
 
 ## Editar refeição
 

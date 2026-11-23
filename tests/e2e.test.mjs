@@ -1165,6 +1165,31 @@ await check("22. dashboard reúne perfil, metas, hoje, histórico e impressão",
   await page.close();
 });
 
+await check("23b. perfil antigo ganha a IA incluída automaticamente", async () => {
+  await resetAll();
+  const base = demoState();
+  await seed(demoState({ profile: { ...base.profile, aiEnabled: false } }));
+  await setConfig({
+    aiEndpoint: "/api/ai",
+    aiServer: { configured: true, provider: "openrouter", model: "free", vision: false }
+  });
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await page.waitForFunction(() => document.getElementById("pf-ai").checked, { timeout: 5000 });
+  const row = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    return current?.data.profile.aiEnabled ? current : null;
+  });
+  equal(row.data.profile.aiEnabled, true, "IA incluída deveria ser ligada para perfil antigo");
+  equal(row.data.profile.aiChoice, "on", "escolha deveria ficar registrada");
+  await send(page, "testando se você está ok");
+  await waitChat(page, "Resposta do servidor de teste.");
+  equal((await getState()).lastAI?.question, "testando se você está ok", "mensagem livre deveria usar a IA");
+  await page.close();
+  await setConfig({ aiEndpoint: "", aiServer: null });
+});
+
 await check("23. nenhuma exceção de página durante os testes", async () => {
   assert(pageErrors.length === 0, pageErrors.join(" | "));
 });
