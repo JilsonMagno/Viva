@@ -10,8 +10,9 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 - Primeiro acesso sem dados de exemplo: você informa idade, altura, peso e objetivo, e a Viva calcula as metas iniciais.
 - Cada conta lê e grava só a própria linha no banco (RLS).
 - Registros pelo assistente (refeições, água, atividade e peso) são salvos na conta.
+- **Refeição com IA primeiro:** quando a IA está ligada, o texto do usuário é interpretado pela IA antes de qualquer busca. Ela separa alimentos, quantidades, unidades e o horário da refeição, usando o histórico do chat para entender continuações e correções. Depois o app confere cada item na tabela local; o que não estiver lá vai para o Open Food Facts. Se a IA falhar, o parser local continua funcionando como reserva.
 - Chat livre com IA: perguntas abertas, texto sem formato de comando e pedidos de pesquisa vão para a IA, não só para respostas programadas. Cada resposta tem o botão **Reportar**, que envia a pergunta, a resposta, o perfil sem nome/e-mail, as refeições do dia e a versão do app. A IA recebe o perfil, as metas, o dia atual, os últimos dias detalhados, o resumo de todo o histórico, o peso e as últimas mensagens. Com a pesquisa ligada, consulta Wikipedia e PubMed (ou Tavily, se configurado) e mostra as fontes. O usuário pode, opcionalmente, salvar a própria chave (OpenAI, Gemini, Groq ou OpenRouter) em Perfil; ela fica só no navegador e tem prioridade. Sem nenhuma chave, o assistente local responde sobre proteína, calorias, água, resumo e sugestão de jantar.
-- Foto do prato: a IA com visão estima alimentos, porções e kcal; o usuário confere e adiciona ao diário.
+- Foto do prato: a IA com visão estima alimentos, porções e kcal; o usuário confere e adiciona ao diário. O modelo de visão tem um modelo de reserva quando o primeiro volta vazio.
 - Dashboard completo em Evolução: perfil, metas, hoje, médias de 7 e 14 dias, peso, alimentos mais registrados e histórico recente, com impressão/PDF.
 - Exportar os dados em JSON e apagar tudo, com confirmação em dois toques.
 - Instalável no celular (tela inicial), com casca em cache.
@@ -35,20 +36,21 @@ Os IDs internos antigos (`hoje`, `viva`, `diario`) foram mantidos para não queb
 Testes:
 - `node tests/rls.test.mjs`: 15 verificações da migração e das regras de acesso, em Postgres real (PGlite), incluindo um usuário anônimo.
 - `node tests/foods.test.mjs`: 8 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade, consistência com a referência oficial e aliases sem colisão).
-- `node tests/ai-proxy.test.mjs`: 12 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter, contexto do usuário, pesquisa web, pergunta pessoal sem pesquisa e recusa de foto no Groq.
+- `node tests/ai-proxy.test.mjs`: 14 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter, contexto do usuário, pesquisa web, pergunta pessoal sem pesquisa, tarefa de interpretação de refeição sem pesquisa, recusa de foto no Groq, modelo de visão do OpenRouter e fallback quando o modelo volta vazio.
 - `node tests/research.test.mjs`: 18 verificações da limpeza da consulta, do filtro de pesquisa e da relevância das fontes.
 - `node tests/report.test.mjs`: 5 verificações do endpoint de relatórios, incluindo JWT, gravação do usuário, limite de contexto e fallback quando a tabela falha.
 - `node tests/food-api.test.mjs`: 11 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g, ausência de dados e recusa de produtos preparados que não correspondem ao alimento pedido.
 - `tests/fixtures/meal-cases.json`: casos de regressão de refeições. Cada caso fixa a mensagem, os itens esperados, as gramas e as kcal totais; a suíte falha se qualquer um mudar.
-- `node tests/e2e.test.mjs`: 50 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, nome de alimento sozinho, regressão de refeições compostas, preparação que não vira alimento simples, pergunta que não vira refeição, botão Reportar, fatias de queijo, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 52 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, nome de alimento sozinho, regressão de refeições compostas, preparação que não vira alimento simples, pergunta que não vira refeição, IA interpretando quantidade antes da tabela, correção de refeição pelo histórico, botão Reportar, fatias de queijo, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as sete suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 229.339 bytes crus, 58.442 bytes em gzip e 49.014 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 238.194 bytes crus, 60.611 bytes em gzip e 50.477 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
-- A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.15.7`.
+- A foto do prato usa um modelo gratuito com visão e um modelo de reserva; é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
+- A interpretação de refeição usa um modelo gratuito de texto/visão (`google/gemma-4-31b-it:free` no OpenRouter) e cai para o modelo de texto padrão se o primeiro não responder. O parser local só entra quando a IA está desligada ou falha.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.16.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -60,15 +62,15 @@ Criar contas e aceitar cobranças exige o seu login. Estes são os passos mínim
 4. **Supabase, URLs de retorno (só com Google)**: em *Authentication > URL Configuration*, adicione a URL do site em *Redirect URLs*.
 5. **Backend**: aplique as migrações de `supabase/migrations/` no SQL Editor ou pela Supabase CLI para criar `viva_data` e `viva_foods` com RLS. A Edge Function `assistente` é legada; a IA de produção usa `/api/ai` no Vercel.
 6. **Site**: preencha `config.js` com a URL e a chave do passo 1. O projeto Vercel já está conectado ao repositório; `npx vercel --prod` publica a pasta `public`. Se trocar de projeto Supabase, defina também `SUPABASE_URL` e `SUPABASE_ANON_KEY` nas variáveis do Vercel; `api/ai.mjs` valida o JWT com elas.
-7. **IA (opcional, uma vez, pelo dono)**: em *Vercel > Project > Settings > Environment Variables*, crie `AI_API_KEY` com uma chave de OpenAI, Groq, Gemini ou OpenRouter. Para começar sem custo, use uma chave gratuita de OpenRouter, Gemini ou Groq (veja a seção **IA gratuita**). Opcionalmente defina `AI_PROVIDER`, `AI_MODEL` e `AI_VISION_MODEL`. Depois faça um novo deploy. O usuário pode usar essa IA só com login ou salvar a própria chave em Perfil. Sem `AI_API_KEY`, o cartão continua disponível para quem quiser usar a própria chave; sem nenhuma chave, o assistente local responde.
+7. **IA (opcional, uma vez, pelo dono)**: em *Vercel > Project > Settings > Environment Variables*, crie `AI_API_KEY` com uma chave de OpenAI, Groq, Gemini ou OpenRouter. Para começar sem custo, use uma chave gratuita de OpenRouter, Gemini ou Groq (veja a seção **IA gratuita**). Opcionalmente defina `AI_PROVIDER`, `AI_MODEL`, `AI_VISION_MODEL` e `AI_MEAL_MODEL`. Depois faça um novo deploy. O usuário pode usar essa IA só com login ou salvar a própria chave em Perfil. Sem `AI_API_KEY`, o cartão continua disponível para quem quiser usar a própria chave; sem nenhuma chave, o assistente local responde.
 
 Depois disso, abra o link no celular e toque em *Adicionar à tela inicial*.
 
 ## Quantidades e nomes fora da tabela
 
-O assistente entende a quantidade antes do alimento: `4 colheres de aveia` usa 60 g (4 × 15 g), enquanto `1 colher de aveia` usa 15 g. Também aceita colher de sopa (15 g), colher de chá (5 g), copo (250 g), xícara (200 g), fatia (30 g), gramas, ml, litros, unidades, porções, prato, concha, scoop, barra, lata, pacote e pote.
+Com a IA ligada, a IA interpreta a frase primeiro e devolve os alimentos, as quantidades e as unidades; o app só então consulta a tabela. Exemplo: “2 fatias de queijo” vira `queijo` + `2` + `fatia`, e o app aplica 30 g por fatia. O parser local, usado quando a IA está desligada ou falha, entende a quantidade antes do alimento: `4 colheres de aveia` usa 60 g (4 × 15 g), enquanto `1 colher de aveia` usa 15 g. Também aceita colher de sopa (15 g), colher de chá (5 g), copo (250 g), xícara (200 g), fatia (30 g), gramas, ml, litros, unidades, porções, prato, concha, scoop, barra, lata, pacote e pote.
 
-Quando o nome não está nos 83 alimentos da tabela nem nas 3 preparações, o app consulta o **Open Food Facts** pelo endpoint `/api/food`, valida o JWT do Supabase e usa os valores por 100 g do produto encontrado. Se o usuário informar uma unidade (ex.: `1 Big Mac`), o app usa o peso da porção cadastrada no produto (ex.: 219 g) em vez de assumir 100 g. O Big Mac, por exemplo, fica com 219 g e cerca de 563 kcal. A resposta mostra `Fonte: Open Food Facts`. Se a base não tiver kcal, proteína, carboidratos e gordura completos, o app **não anota e não inventa**: pede a porção e as kcal ou o uso de um alimento da tabela. A IA não é usada para estimar valores nutricionais de nomes desconhecidos.
+Quando o nome não está nos 83 alimentos da tabela nem nas 3 preparações, o app consulta o **Open Food Facts** pelo endpoint `/api/food`, valida o JWT do Supabase e usa os valores por 100 g do produto encontrado. A IA não inventa valores nutricionais: ela só identifica o alimento e a quantidade. Se o usuário informar uma unidade (ex.: `1 Big Mac`), o app usa o peso da porção cadastrada no produto (ex.: 219 g) em vez de assumir 100 g. O Big Mac, por exemplo, fica com 219 g e cerca de 563 kcal. A resposta mostra `Fonte: Open Food Facts`. Se a base não tiver kcal, proteína, carboidratos e gordura completos, o app **não anota e não inventa**: pede a porção e as kcal ou o uso de um alimento da tabela. A IA não é usada para estimar valores nutricionais de nomes desconhecidos.
 
 ## Padronização antes da busca
 
@@ -117,7 +119,7 @@ O treino também pode ser anotado pelo assistente:
 
 Cada treino é salvo como uma atividade de musculação, com MET 3,5 (leve), 6 (médio) ou 7,5 (intenso). O cartão **Treino de hoje** na tela principal mostra o nome do treino e a intensidade. Os campos ficam no mesmo JSON do diário; não é necessária uma migração nova.
 
-O Google não oferece uma API pública gratuita de nutrição estruturada; por isso a busca externa usa o Open Food Facts. Se você tiver uma API de busca própria, ela pode ser adicionada em `api/food.mjs`.
+O Google não oferece uma API pública gratuita de nutrição estruturada; por isso a busca externa usa o Open Food Facts. A IA interpreta o texto, mas não é fonte de valores nutricionais. Se você tiver uma API de busca própria, ela pode ser adicionada em `api/food.mjs`.
 
 ## Contexto da IA
 
@@ -145,7 +147,7 @@ O interruptor **Pesquisar na web** fica ligado por padrão. Quando ligado, o pro
 
 Perguntas sobre os seus próprios dados (“quantas calorias comi hoje?”, “quanto falta de proteína?”) não disparam pesquisa: elas usam o contexto do app. A resposta mostra uma seção **Fontes consultadas** com os links. Se a pesquisa falhar, a IA ainda responde com o contexto e sinaliza a incerteza.
 
-O registro continua determinístico: só vira refeição quando a mensagem tem um verbo explícito (“comi”, “registra”, “anota”) ou começa com quantidade (“2 ovos”, “100 g de arroz”). “Quero saber sobre arroz integral” é conversa; “2 ovos e um pão” é registro. As respostas locais prontas só entram quando a IA está desligada ou falha.
+O registro é **IA-first** quando a IA está ligada: a mensagem de refeição é enviada com o histórico e as refeições de hoje; a IA devolve JSON com `intent`, `label`, `items`, `quantity`, `unit`, `grams` e `mealId` (para correções). O app resolve os itens na tabela local e no Open Food Facts, e só então grava. “Quero saber sobre arroz integral” continua sendo conversa; “2 ovos e um pão” é interpretado como refeição. Se a IA estiver desligada ou falhar, o parser local determinístico entra como reserva.
 
 No celular, ao tocar no campo de mensagem, o chat ocupa a tela acima do teclado. Cabeçalho, sugestões, aviso e abas saem de cena; o histórico fica visível e rola para a última mensagem enquanto você digita. Ao sair do campo, a tela volta ao normal.
 
@@ -153,7 +155,7 @@ Perfis antigos com a IA incluída disponível e sem escolha registrada ligam a I
 
 A pesquisa na web só entra em temas de saúde ou quando o usuário pede explicitamente. Mensagens curtas como “Testando”, “oi” e “obrigado” recebem resposta curta, sem fontes e sem discurso de redirecionamento.
 
-Refeições com vários itens reconhecem plurais, alimentos compostos e quantidades por unidade, como “2 iogurtes grego 90 g cada”. A base TACO/USDA é consultada antes do Open Food Facts. Um nome de alimento sozinho, como “sardinha”, também é anotado na base local. Produtos preparados, como “patê de sardinha”, não substituem o alimento simples quando a busca é por “sardinha”.
+Refeições com vários itens reconhecem plurais, alimentos compostos e quantidades por unidade, como “2 iogurtes grego 90 g cada”. A IA separa os itens e o app confere a base TACO/USDA antes do Open Food Facts. Um nome de alimento sozinho, como “sardinha”, também é interpretado e anotado na base local. Produtos preparados, como “patê de sardinha”, não substituem o alimento simples quando a busca é por “sardinha”. Correções como “na verdade era queijo minas” usam o id da refeição que está no contexto e substituem a refeição, sem duplicar.
 
 ## Editar refeição
 
@@ -189,7 +191,7 @@ O cartão *Assistente com IA* fica em Perfil. Se o dono configurou `AI_API_KEY`,
 Configuração da IA do servidor, uma vez:
 
 1. Crie uma chave em OpenAI, Groq, Google Gemini ou OpenRouter.
-2. No Vercel, em *Settings > Environment Variables*, adicione `AI_API_KEY` em *Production*. Opcional: `AI_PROVIDER` (`openai`, `groq`, `gemini`, `openrouter`), `AI_MODEL`, `AI_VISION_MODEL` e `TAVILY_API_KEY` (pesquisa web com mais resultados; sem ela, o app usa Wikipedia e PubMed).
+2. No Vercel, em *Settings > Environment Variables*, adicione `AI_API_KEY` em *Production*. Opcional: `AI_PROVIDER` (`openai`, `groq`, `gemini`, `openrouter`), `AI_MODEL`, `AI_VISION_MODEL`, `AI_MEAL_MODEL` e `TAVILY_API_KEY` (pesquisa web com mais resultados; sem ela, o app usa Wikipedia e PubMed).
 3. Faça um novo deploy (`npx vercel --prod`).
 4. Abra Perfil: o cartão mostra “IA incluída no app”. Ligue a permissão uma vez.
 
@@ -206,11 +208,11 @@ Privacidade: com a IA ligada, a pergunta, o contexto de saúde (perfil, metas, r
 
 Provedores e modelos padrão:
 
-- **Padrão do app:** OpenRouter `openrouter/free` (grátis; texto e foto)
+- **Padrão do app:** OpenRouter `openrouter/free` para texto e `google/gemma-4-31b-it:free` para foto e interpretação de refeições (grátis)
 - **OpenAI:** `gpt-4o-mini` (API paga; aceita fotos)
 - **Groq:** `openai/gpt-oss-120b` (plano gratuito; só texto, não aceita fotos)
 - **Google Gemini:** `gemini-3.5-flash-lite` (camada gratuita; aceita fotos)
-- **OpenRouter:** `openrouter/free` (roteador gratuito; aceita fotos; alternativa fixa: `google/gemma-4-31b-it:free`)
+- **OpenRouter:** `openrouter/free` para conversa; `google/gemma-4-31b-it:free` para foto e interpretação de refeições (com reserva `nvidia/nemotron-3.5-super-vl:free` na visão)
 
 O proxy aceita `apiKey` no corpo para a chave própria do usuário. A chave do servidor continua sendo o padrão quando o campo está vazio. O seletor de provedor já abre em **OpenRouter (grátis)**, usando `openrouter/free`; para usar um modelo pago, o usuário escolhe o provedor, cola a própria chave e informa o modelo. Ao remover a chave, o app volta ao padrão do servidor.
 
@@ -292,7 +294,7 @@ app.js                           lógica do app (fonte)
 index.template.html              markup e CSS (fonte)
 build.cjs                        gera index.html a partir do template + app.js
 config.js                        URL e chave pública do Supabase; endpoint /api/ai
-api/ai.mjs                       proxy da IA; valida o JWT, usa chave do servidor ou do usuário, aceita fotos (visão) e anexa pesquisa web
+api/ai.mjs                       proxy da IA; valida o JWT, usa chave do servidor ou do usuário, interpreta refeições em JSON, aceita fotos (visão) e anexa pesquisa web
 api/research.mjs                 pesquisa Tavily (opcional), Wikipedia e PubMed, com cache e limite de resultados
 api/food.mjs                     busca nomes fora da tabela no Open Food Facts, com valores por 100 g
 manifest.webmanifest             instalação no celular

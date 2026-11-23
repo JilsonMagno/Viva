@@ -18,7 +18,7 @@
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
-  const APP_VERSION = "2.15.7";
+  const APP_VERSION = "2.16.0";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -49,7 +49,7 @@
   function parseNum(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
     if (value == null) return NaN;
-    let s = String(value).trim().toLowerCase().replace(/\s+/g, "").replace(/(kg|cm|ml|kcal|anos?|litros?|l)$/g, "");
+    let s = String(value).trim().toLowerCase().replace(/\s+/g, "").replace(/(kg|g|gramas?|cm|ml|kcal|anos?|litros?|l)$/g, "");
     if (!s) return NaN;
     if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
     const n = Number(s);
@@ -1138,6 +1138,207 @@
     return { items, unknown, label: detectMealLabel(norm) };
   }
 
+  function parseAIJson(answer) {
+    const text = String(answer || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end <= start) return null;
+    try {
+      return JSON.parse(text.slice(start, end + 1));
+    } catch {
+      return null;
+    }
+  }
+
+  function parseMealInterpretation(answer) {
+    const data = parseAIJson(answer);
+    if (!data || typeof data !== "object") return null;
+    const intent = ["meal", "correction", "other"].includes(String(data.intent || ""))
+      ? String(data.intent)
+      : (Array.isArray(data.items) ? "meal" : "other");
+    if (intent === "other") {
+      return { intent, answer: String(data.answer || "").trim().slice(0, 1000) };
+    }
+    const raw = Array.isArray(data.items) ? data.items.slice(0, 12) : [];
+    const items = raw.map((item) => {
+      const name = String(item?.name || item?.query || "").trim().slice(0, 100);
+      const query = String(item?.query || item?.name || "").trim().slice(0, 120);
+      const quantity = parseNum(item?.quantity ?? item?.qty);
+      const grams = parseNum(item?.grams ?? item?.weight);
+      const unit = String(item?.unit || "").trim().slice(0, 40);
+      if (!name && !query) return null;
+      return {
+        name: name || query,
+        query: query || name,
+        quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
+        grams: Number.isFinite(grams) && grams > 0 ? grams : null,
+        unit
+      };
+    }).filter(Boolean);
+    return {
+      intent,
+      mealId: String(data.mealId || "").trim(),
+      label: String(data.label || "").trim().slice(0, 40),
+      items,
+      missing: Array.isArray(data.missing) ? data.missing.map(String).slice(0, 5) : [],
+      question: String(data.question || "").trim().slice(0, 300)
+    };
+  }
+
+  function findLocalFood(value) {
+    const text = normalize(value);
+    const canonical = canonicalFoodName(value);
+    const keys = [...new Set([text, canonical].filter(Boolean))];
+    for (const key of keys) {
+      for (const entry of FOOD_INDEX) {
+        if (entry.aliases.includes(key)) return entry.food;
+      }
+    }
+    let partial = null;
+    for (const key of keys) {
+      for (const entry of FOOD_INDEX) {
+        for (const alias of entry.aliases) {
+          if (alias.length < 3 || !key.includes(alias)) continue;
+          if (!partial || alias.length > partial.length) partial = { food: entry.food, length: alias.length };
+        }
+      }
+    }
+    return partial?.food || null;
+  }
+
+  function unitGramsFor(unit, food) {
+    const value = normalize(unit);
+    if (!value) return null;
+    if (/^colher(?:es)? de sopa$/.test(value)) return 15;
+    if (/^colher(?:es)? de cha$/.test(value)) return 5;
+    if (/^colher(?:es)?$/.test(value)) return 15;
+    if (/^(?:xicara|xicaras)$/.test(value)) return 200;
+    if (/^(?:copo|copos)$/.test(value)) return 250;
+    if (/^(?:prato|pratos)$/.test(value)) return 300;
+    if (/^(?:concha|conchas)$/.test(value)) return 100;
+    if (/^(?:scoop|scoops|dose|doses)$/.test(value)) return 30;
+    if (/^(?:barra|barras)$/.test(value)) return 25;
+    if (/^(?:pacote|pacotes)$/.test(value)) return 100;
+    if (/^(?:pote|potes)$/.test(value)) return 170;
+    if (/^(?:garrafa|garrafas)$/.test(value)) return 500;
+    if (/^(?:lata|latas)$/.test(value)) return String(food?.id || "").includes("sardinha") ? 125 : 350;
+    if (/^(?:fatia|fatias)$/.test(value)) return /pao/.test(String(food?.id || "")) ? 25 : 30;
+    if (/^(?:g|grama|gramas)$/.test(value)) return 1;
+    if (/^(?:ml|mililitro|mililitros)$/.test(value)) return 1;
+    if (/^(?:l|litro|litros)$/.test(value)) return 1000;
+    return null;
+  }
+
+  function gramsForQuantity(quantity, unit, food) {
+    const qty = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+    const per = unitGramsFor(unit, food);
+    if (per != null) return qty * per;
+    return qty * (Number(food?.unitGrams) || Number(food?.portion) || Number(food?.servingGrams) || 100);
+  }
+
+  async function resolveMealInterpretation(interpretation, text) {
+    const items = [];
+    const unknown = [];
+    const notes = [];
+    for (const raw of interpretation.items) {
+      const display = raw.name || raw.query;
+      const local = findLocalFood(raw.query) || findLocalFood(raw.name);
+      if (local) {
+        const amount = raw.grams || gramsForQuantity(raw.quantity, raw.unit, local);
+        if (!(amount > 0)) {
+          unknown.push(display);
+          continue;
+        }
+        if (!raw.grams && !raw.quantity && !raw.unit) notes.push(`${local.name}: 1 porção (${round(amount)} g)`);
+        const factor = amount / 100;
+        items.push({
+          foodId: local.id,
+          name: local.name,
+          grams: round(amount),
+          kcal: +(local.kcal * factor).toFixed(1),
+          p: +(local.p * factor).toFixed(1),
+          c: +(local.c * factor).toFixed(1),
+          f: +(local.f * factor).toFixed(1)
+        });
+        continue;
+      }
+      const query = canonicalFoodName(raw.query || raw.name) || display;
+      const found = await lookupFood(query);
+      if (!found) {
+        unknown.push(display);
+        continue;
+      }
+      const amount = raw.grams || gramsForQuantity(raw.quantity, raw.unit, found);
+      if (!(amount > 0)) {
+        unknown.push(display);
+        continue;
+      }
+      if (!raw.grams && !raw.quantity && !raw.unit) notes.push(`${found.name}: 1 porção (${round(amount)} g)`);
+      const factor = amount / 100;
+      items.push({
+        foodId: `web-${found.code || found.name}`,
+        name: found.name,
+        grams: round(amount),
+        kcal: +(found.kcal * factor).toFixed(1),
+        p: +(found.protein * factor).toFixed(1),
+        c: +(found.carbs * factor).toFixed(1),
+        f: +(found.fat * factor).toFixed(1),
+        source: found.source || "Open Food Facts",
+        sourceUrl: found.url || ""
+      });
+    }
+    return {
+      items,
+      unknown,
+      notes,
+      label: interpretation.label || detectMealLabel(text)
+    };
+  }
+
+  function mealSavedReply(saved, unknown = [], notes = [], corrected = false) {
+    const list = saved.items.map((item) => `${item.name} (${nf(item.kcal)} kcal)`).join(", ");
+    const totals = dayTotals();
+    const left = (state.targets?.kcal || 0) - totals.kcal + Math.round(totals.burned * 0.5);
+    const sources = [...new Set(saved.items.map((item) => item.source).filter(Boolean))];
+    const sourceNote = sources.length ? ` Fonte: ${sources.join(", ")}.` : "";
+    const missing = unknown.length
+      ? ` Não encontrei dados para ${unknown.map((name) => `“${name}”`).join(", ")}; não anotei esses itens.`
+      : "";
+    const note = notes.length ? ` Considerei ${notes.join("; ")}.` : "";
+    return `${corrected ? "Corrigi" : "Anotei"} no ${String(saved.label || "").toLowerCase()}: ${list}. Total da refeição: ${nf(saved.kcal)} kcal. Restam ${nf(left)} kcal hoje.${note}${sourceNote}${missing}`;
+  }
+
+  async function interpretMealAI(text) {
+    if (!state?.profile?.aiEnabled) return null;
+    const answer = await askAI(text, { task: "meal", search: false });
+    return parseMealInterpretation(answer);
+  }
+
+  async function handleAIMeal(text, interpretation) {
+    if (!interpretation || !["meal", "correction"].includes(interpretation.intent)) return null;
+    const resolved = await resolveMealInterpretation(interpretation, text);
+    if (!resolved.items.length) {
+      if (resolved.unknown.length) {
+        return `Não encontrei dados confiáveis para ${resolved.unknown.map((name) => `“${name}”`).join(", ")}. Não vou inventar valores. Informe a marca e a porção, ou use um alimento da tabela.`;
+      }
+      if (interpretation.intent === "correction") return interpretation.question || "Não entendi a correção. Diga o alimento e a quantidade, por exemplo: “na verdade, 2 fatias de queijo minas”.";
+      return interpretation.question || null;
+    }
+    if (interpretation.intent === "correction") {
+      const target = (dayData().meals || []).find((meal) => meal.id === interpretation.mealId);
+      if (!target) return interpretation.question || "Não encontrei a refeição para corrigir. Pode repetir qual refeição era?";
+      target.items = resolved.items;
+      target.label = resolved.label;
+      recalcMeal(target);
+      queueSave();
+      renderToday();
+      renderDiary();
+      return mealSavedReply(target, resolved.unknown, resolved.notes, true);
+    }
+    const saved = addMeal(resolved.items, resolved.label);
+    return mealSavedReply(saved, resolved.unknown, resolved.notes);
+  }
+
   function parseWater(text) {
     const norm = normalize(text);
     if (!/agua|hidrat/.test(norm)) return null;
@@ -1495,6 +1696,7 @@
 
   function aiMeal(meal) {
     return {
+      id: meal.id,
       label: meal.label,
       at: meal.at,
       kcal: round(meal.kcal),
@@ -1669,7 +1871,7 @@
 
   async function askAI(question, options = {}) {
     if (!navigator.onLine) return "Você está offline. Tente de novo quando a conexão voltar.";
-    const wantsSearch = options.search !== undefined ? !!options.search : !options.image && $("#chat-search")?.checked !== false;
+    const wantsSearch = options.search !== undefined ? !!options.search : !options.image && options.task !== "meal" && $("#chat-search")?.checked !== false;
 
     if (AI_ENDPOINT) {
       let config = activeAIConfig();
@@ -1694,6 +1896,7 @@
         const provider = config.provider || "openai";
         const model = config.model || "";
         const payload = { question, message: question, context: aiContext(question), provider, model, search: wantsSearch };
+        if (options.task) payload.task = options.task;
         if (config.source === "own") payload.apiKey = config.key;
         if (options.image) payload.image = options.image;
         const res = await fetch(AI_ENDPOINT, {
@@ -1727,7 +1930,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // Compatível com { message, context } -> { reply } e com { question } -> { answer }.
-        body: JSON.stringify({ question, message: question, context: aiContext(question), search: wantsSearch })
+        body: JSON.stringify({ question, message: question, context: aiContext(question), search: wantsSearch, ...(options.task ? { task: options.task } : {}) })
       });
       if (res.status === 429) return "Muitas perguntas em pouco tempo. Espere um minuto e tente de novo.";
       if (res.status === 503) return "A IA ainda não está configurada no servidor. Avise quem publicou o app.";
@@ -2036,23 +2239,22 @@
     const head = text.trim().split(/\s+/).slice(0, 3).join(" ");
     const wordQuantity = /^(?:um|uma|meio|meia|dois|duas|três|tres|quatro|cinco|seis|sete|oito|nove|dez)\b/i.test(text);
     const nearFood = findFoodHits(head).length > 0 || /\b(g|gramas?|ml|colher|colheres|xícara|xícaras|fatia|fatias|unidade|unidades|porção|porcoes|prato|pratos|copo|copos|pote|potes|lata|latas|garrafa|garrafas)\b/.test(norm);
-    const looksLikeMeal = /\b(comi|tomei|bebi|registra|registre|registrar|anota|anote|anotar|adiciona|adicione|adicionar)\b/.test(norm) || /^\s*(?:\d|½|1\/2)/.test(text) || (wordQuantity && nearFood) || isFoodOnly(text);
+    const looksLikeMeal = /\b(comi|almocei|jantei|tomei|bebi|lanchei|merendei|registra|registre|registrar|anota|anote|anotar|adiciona|adicione|adicionar|na verdade|corrige|corrigir|corrija)\b/.test(norm) || /\b(cafe da manha|almoco|jantar|lanche)\b/.test(norm) || /^\s*(?:\d|½|1\/2)/.test(text) || (wordQuantity && nearFood) || isFoodOnly(text);
+    let aiInterpretation = null;
+    if (looksLikeMeal && state.profile.aiEnabled) {
+      aiInterpretation = await interpretMealAI(text);
+      const aiReply = await handleAIMeal(text, aiInterpretation);
+      if (aiReply) return aiReply;
+    }
     const meal = looksLikeMeal ? await parseMeal(text) : null;
     if (meal && meal.items.length) {
       const saved = addMeal(meal.items, meal.label);
-      const list = saved.items.map((item) => `${item.name} (${nf(item.kcal)} kcal)`).join(", ");
-      const totals = dayTotals();
-      const left = (state.targets?.kcal || 0) - totals.kcal + Math.round(totals.burned * 0.5);
-      const sources = [...new Set(saved.items.map((item) => item.source).filter(Boolean))];
-      const sourceNote = sources.length ? ` Fonte: ${sources.join(", ")}.` : "";
-      const missing = meal.unknown?.length
-        ? ` Não encontrei dados para ${meal.unknown.map((name) => `“${name}”`).join(", ")}; não anotei esses itens.`
-        : "";
-      return `Anotei no ${meal.label.toLowerCase()}: ${list}. Total da refeição: ${nf(saved.kcal)} kcal. Restam ${nf(left)} kcal hoje.${sourceNote}${missing}`;
+      return mealSavedReply(saved, meal.unknown || []);
     }
     if (meal?.unknown?.length) {
       return `Não encontrei dados confiáveis para ${meal.unknown.map((name) => `“${name}”`).join(", ")}. Não vou inventar valores. Informe a porção e as kcal, ou use um alimento da tabela.`;
     }
+    if (aiInterpretation?.intent === "other" && aiInterpretation.answer) return aiInterpretation.answer;
     if (state.profile.aiEnabled) return askAI(text);
     const local = localAnswer(norm);
     if (local) return local;
@@ -3090,16 +3292,19 @@
     const raw = Array.isArray(data.items) ? data.items.slice(0, 10) : [];
     const items = raw.map((item) => {
       const name = String(item?.name || "").trim().slice(0, 80);
-      const grams = parseNum(item?.grams);
-      const kcal = parseNum(item?.kcal);
+      const grams = parseNum(item?.grams ?? item?.weight ?? item?.portionGrams ?? item?.quantityGrams);
+      const protein = +clamp(parseNum(item?.protein ?? item?.p ?? item?.proteinGrams) || 0, 0, 500).toFixed(1);
+      const carbs = +clamp(parseNum(item?.carbs ?? item?.c ?? item?.carbsGrams) || 0, 0, 500).toFixed(1);
+      const fat = +clamp(parseNum(item?.fat ?? item?.f ?? item?.fatGrams) || 0, 0, 500).toFixed(1);
+      const kcal = parseNum(item?.kcal ?? item?.calories ?? item?.energyKcal) || (4 * protein + 4 * carbs + 9 * fat);
       if (!name || !(grams > 0) || !(kcal > 0)) return null;
       return {
         name,
         grams: round(clamp(grams, 1, 2000)),
         kcal: round(clamp(kcal, 1, 5000)),
-        protein: +clamp(parseNum(item?.protein ?? item?.p) || 0, 0, 500).toFixed(1),
-        carbs: +clamp(parseNum(item?.carbs ?? item?.c) || 0, 0, 500).toFixed(1),
-        fat: +clamp(parseNum(item?.fat ?? item?.f) || 0, 0, 500).toFixed(1)
+        protein,
+        carbs,
+        fat
       };
     }).filter(Boolean);
     if (!items.length) return null;

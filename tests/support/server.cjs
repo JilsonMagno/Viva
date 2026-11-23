@@ -45,9 +45,10 @@ const state = {
   aiBodies: [],
   aiMode: "ok",
   aiAnswer: "Uma dieta equilibrada combina variedade, regularidade e água ao longo do dia.",
+  mealAnswer: "",
   aiVisionAnswer: JSON.stringify({
     items: [
-      { name: "Arroz branco", grams: 120, kcal: 154, protein: 3, carbs: 33.7, fat: 0.2 },
+      { name: "Arroz branco", weight: 120, calories: 154, proteinGrams: 3, carbsGrams: 33.7, fatGrams: 0.2 },
       { name: "Feijão", grams: 100, kcal: 76, protein: 4.8, carbs: 13.6, fat: 0.5 }
     ],
     confidence: "media",
@@ -89,6 +90,7 @@ function reset() {
   state.aiQuestions = [];
   state.aiBodies = [];
   state.aiMode = "ok";
+  state.mealAnswer = "";
   state.aiAnswer = "Uma dieta equilibrada combina variedade, regularidade e água ao longo do dia.";
   state.aiVisionAnswer = JSON.stringify({
     items: [
@@ -239,13 +241,16 @@ const server = http.createServer(async (req, res) => {
       model: body.model,
       apiKey: body.apiKey,
       question: body.question,
+      task: body.task,
       hasImage: !!body.image,
       imagePrefix: body.image ? String(body.image).slice(0, 30) : ""
     };
-    json(res, {
-      answer: body.image ? state.aiVisionAnswer : (state.aiServer ? "Resposta do servidor de teste." : "Resposta BYOK de teste."),
-      sources: body.image ? [] : state.aiSources
-    });
+    const answer = body.task === "meal" && state.mealAnswer
+      ? state.mealAnswer
+      : body.image
+        ? state.aiVisionAnswer
+        : (state.aiServer ? "Resposta do servidor de teste." : "Resposta BYOK de teste.");
+    json(res, { answer, sources: body.image ? [] : state.aiSources });
     return;
   }
 
@@ -273,6 +278,7 @@ const server = http.createServer(async (req, res) => {
     if (body.foodMode) state.foodMode = body.foodMode;
     if (body.foodResult) state.foodResult = body.foodResult;
     if (typeof body.aiAnswer === "string") state.aiAnswer = body.aiAnswer;
+    if (typeof body.mealAnswer === "string") state.mealAnswer = body.mealAnswer;
     if (typeof body.aiEndpoint === "string") state.aiEndpoint = body.aiEndpoint;
     if ("aiServer" in body) state.aiServer = body.aiServer;
     if (Array.isArray(body.aiSources)) state.aiSources = body.aiSources;
@@ -481,7 +487,7 @@ const server = http.createServer(async (req, res) => {
       json(res, { reply: state.aiAnswer });
       return;
     }
-    json(res, { answer: state.aiAnswer, model: "test-model" });
+    json(res, { answer: body.task === "meal" && state.mealAnswer ? state.mealAnswer : state.aiAnswer, model: "test-model" });
     return;
   }
 

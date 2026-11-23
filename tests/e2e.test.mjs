@@ -769,7 +769,10 @@ await check("8f. nome de alimento sozinho é anotado sem IA", async () => {
   equal(meal.items.length, 1, "um item");
   equal(meal.items[0].name, "Sardinha em óleo", "sardinha da base local");
   equal(meal.items[0].grams, 100, "porção padrão");
-  equal((await getState()).aiCalls, 0, "não deveria chamar a IA");
+  const state = await getState();
+  equal(state.aiCalls, 1, "a IA deveria interpretar a refeição");
+  equal(state.aiBodies[0].task, "meal", "tarefa de refeição");
+  equal(state.aiBodies[0].search, false, "refeição não deveria pesquisar na web");
   await page.close();
 });
 
@@ -828,6 +831,90 @@ await check("8i. pergunta sobre alimento não vira refeição", async () => {
   await page.close();
 });
 
+await check("8k. IA interpreta quantidade e alimento antes de consultar a tabela", async () => {
+  await resetAll();
+  await seed(demoState({ days: {} }));
+  await setConfig({
+    mealAnswer: JSON.stringify({
+      intent: "meal",
+      label: "Café da manhã",
+      items: [{ name: "Queijo muçarela", query: "queijo", quantity: 2, unit: "fatia", grams: null }],
+      missing: [],
+      question: ""
+    })
+  });
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "2 fatias de queijo");
+  await waitChat(page, "Anotei no café da manhã");
+  const state = await getState();
+  equal(state.aiCalls, 1, "IA deveria interpretar primeiro");
+  equal(state.aiBodies[0].task, "meal", "tarefa de refeição");
+  equal(state.aiBodies[0].search, false, "interpretação sem pesquisa web");
+  equal(state.foodCalls, 0, "alimento da tabela não precisa de busca externa");
+  const meal = await waitFor(async () => {
+    const row = await rowFor(USER_A.id);
+    const meals = row?.data.days[today()]?.meals || [];
+    return meals.length ? meals[0] : null;
+  });
+  equal(meal.items.length, 1, "um item");
+  equal(meal.items[0].name, "Queijo muçarela", "alimento da tabela");
+  equal(meal.items[0].grams, 60, "2 fatias de 30 g");
+  equal(meal.items[0].kcal, 197.9, "kcal do queijo");
+  await page.close();
+});
+
+await check("8l. IA corrige uma refeição usando o histórico do chat", async () => {
+  await resetAll();
+  const day = today();
+  await seed(demoState({
+    days: {
+      [day]: {
+        meals: [{
+          id: "meal-ai",
+          at: new Date().toISOString(),
+          label: "Café da manhã",
+          kcal: 198,
+          p: 13.6,
+          c: 1.8,
+          f: 15.1,
+          items: [{ name: "Queijo muçarela", grams: 60, kcal: 198, p: 13.6, c: 1.8, f: 15.1 }]
+        }],
+        waterMl: 0,
+        activities: []
+      }
+    }
+  }));
+  await setConfig({
+    mealAnswer: JSON.stringify({
+      intent: "correction",
+      mealId: "meal-ai",
+      label: "Café da manhã",
+      items: [{ name: "Queijo minas", query: "queijo minas", quantity: 1, unit: "fatia", grams: null }],
+      missing: [],
+      question: ""
+    })
+  });
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "na verdade era queijo minas");
+  await waitChat(page, "Corrigi no café da manhã");
+  const state = await getState();
+  equal(state.aiBodies[0].task, "meal", "correção usa a tarefa de refeição");
+  equal(state.aiBodies[0].context.today.meals[0].id, "meal-ai", "contexto leva o id da refeição");
+  const meal = await waitFor(async () => {
+    const row = await rowFor(USER_A.id);
+    const meals = row?.data.days[today()]?.meals || [];
+    return meals.length === 1 && meals[0].items?.[0]?.name === "Queijo minas" ? meals[0] : null;
+  });
+  equal(meal.items.length, 1, "não deveria duplicar a refeição");
+  equal(meal.items[0].name, "Queijo minas", "alimento corrigido");
+  equal(meal.items[0].grams, 30, "uma fatia");
+  await page.close();
+});
+
 await check("8j. botão Reportar envia mensagem e contexto", async () => {
   await resetAll();
   await seed(demoState({ days: {} }));
@@ -851,7 +938,7 @@ await check("8j. botão Reportar envia mensagem e contexto", async () => {
     return current.reports?.length ? current.reports[0] : null;
   });
   equal(report.question, "sardinha", "pergunta enviada");
-  equal(report.version, "2.15.7", "versão enviada");
+  equal(report.version, "2.16.0", "versão enviada");
   equal(report.profile.name, undefined, "nome não deve ir no relatório");
   assert(report.today.meals.length === 1, "refeição deveria ir no contexto");
   await page.close();

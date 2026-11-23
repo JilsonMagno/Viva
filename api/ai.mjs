@@ -13,6 +13,26 @@ const PROVIDERS = {
 };
 
 const VISION_PROVIDERS = new Set(["openai", "gemini", "openrouter"]);
+const DEFAULT_VISION_MODELS = {
+  openai: "gpt-4o-mini",
+  gemini: "gemini-3.5-flash-lite",
+  openrouter: "google/gemma-4-31b-it:free"
+};
+const DEFAULT_MEAL_MODEL = "google/gemma-4-31b-it:free";
+const VISION_FALLBACKS = {
+  openrouter: ["google/gemma-4-31b-it:free", "nvidia/nemotron-3.5-super-vl:free"]
+};
+
+function visionModelFor(provider, requested) {
+  const fallback = DEFAULT_VISION_MODELS[provider];
+  if (!requested || requested === "openrouter/free") return fallback || requested;
+  return requested;
+}
+
+function visionCandidates(provider, primary) {
+  const list = [primary, ...(VISION_FALLBACKS[provider] || [])].filter(Boolean);
+  return [...new Set(list)].slice(0, provider === "openrouter" ? 2 : 1);
+}
 
 const SYSTEM = [
   "Você é a Viva, assistente pessoal de saúde em português do Brasil.",
@@ -28,6 +48,20 @@ const SYSTEM = [
   "Se as fontes não forem úteis, ignore-as e não mencione fontes. Não invente fontes.",
   "Em saudação, teste ou conversa curta, responda em uma única frase curta, sem se apresentar, sem listar temas, sem repetir o objetivo do usuário e sem fontes. Uma pergunta curta de ajuda é opcional.",
   "Se o pedido fugir do objetivo, redirecione em uma frase curta, sem explicar que está redirecionando."
+].join(" ");
+
+const MEAL_SYSTEM = [
+  "Você interpreta mensagens de refeição em português do Brasil para o app Viva.",
+  "Responda SOMENTE com JSON válido, sem markdown, sem texto antes ou depois.",
+  "Formato para registrar: {\"intent\":\"meal\",\"label\":\"Café da manhã|Almoço|Lanche|Jantar\",\"items\":[{\"name\":\"nome curto\",\"query\":\"nome para busca\",\"quantity\":2,\"unit\":\"fatia\",\"grams\":null}],\"missing\":[],\"question\":\"\"}",
+  "Formato para corrigir uma refeição já registrada: {\"intent\":\"correction\",\"mealId\":\"id do contexto\",\"label\":\"...\",\"items\":[...],\"missing\":[],\"question\":\"\"}",
+  "Se não for registro nem correção de comida, responda {\"intent\":\"other\",\"answer\":\"resposta curta\"}.",
+  "Interprete a mensagem junto com o histórico e as refeições de hoje do contexto.",
+  "Separe cada alimento. Preserve preparações compostas (ex.: patê de sardinha, pão de queijo, risoto) em vez de reduzi-las ao alimento simples.",
+  "Use quantity e unit quando o usuário informar. Use grams quando ele informar gramas. Não invente quantidade: se faltar, quantity null, unit null, grams null e inclua \"quantity\" em missing.",
+  "Para alimentos simples, query deve ser o nome do alimento, sem quantidade, unidade, marca ou frase inteira.",
+  "Não invente valores nutricionais; o app consulta a tabela local e o Open Food Facts depois.",
+  "Não faça diagnóstico, não prescreva remédio e não substitua orientação médica."
 ].join(" ");
 
 const VISION_SYSTEM = [
@@ -59,7 +93,12 @@ function inferProvider(key) {
 
 const SERVER_PROVIDER = Object.hasOwn(PROVIDERS, process.env.AI_PROVIDER) ? process.env.AI_PROVIDER : inferProvider(SERVER_KEY);
 const SERVER_MODEL = String(process.env.AI_MODEL || "").trim().slice(0, 120) || PROVIDERS[SERVER_PROVIDER]?.model || PROVIDERS.openrouter.model;
-const SERVER_VISION_MODEL = String(process.env.AI_VISION_MODEL || "").trim().slice(0, 120) || SERVER_MODEL;
+const SERVER_VISION_MODEL = visionModelFor(
+  SERVER_PROVIDER,
+  String(process.env.AI_VISION_MODEL || "").trim().slice(0, 120) || SERVER_MODEL
+);
+const SERVER_MEAL_MODEL = String(process.env.AI_MEAL_MODEL || "").trim().slice(0, 120)
+  || (SERVER_PROVIDER === "openrouter" ? DEFAULT_MEAL_MODEL : SERVER_MODEL);
 const SERVER_VISION = VISION_PROVIDERS.has(SERVER_PROVIDER);
 const RATE = new Map();
 const RATE_LIMIT = 30;
@@ -86,6 +125,19 @@ function json(res, status, body) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   res.send(JSON.stringify(body));
+}
+
+function validMealAnswer(text) {
+  const raw = String(text || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start < 0 || end <= start) return false;
+  try {
+    const data = JSON.parse(raw.slice(start, end + 1));
+    return !!data && (["meal", "correction", "other"].includes(data.intent) || Array.isArray(data.items));
+  } catch {
+    return false;
+  }
 }
 
 function safeError(raw, key) {
@@ -172,6 +224,8 @@ export default async function handler(req, res) {
   body = body && typeof body === "object" ? body : {};
 
   const question = String(body.question || body.message || "").trim().slice(0, 2000);
+  const task = String(body.task || "").trim().toLowerCase();
+  const isMealTask = task === "meal";
   const image = String(body.image || "").trim();
   if (!question) return json(res, 400, { error: "missing_question" });
   if (image) {
@@ -199,7 +253,10 @@ export default async function handler(req, res) {
   const model = userKey
     ? (String(body.model || provider.model).trim().slice(0, 120) || provider.model)
     : SERVER_MODEL;
-  const visionModel = userKey ? model : SERVER_VISION_MODEL;
+  const visionModel = userKey ? visionModelFor(providerName, model) : SERVER_VISION_MODEL;
+  const mealModel = userKey
+    ? (providerName === "openrouter" && (!model || model === "openrouter/free") ? DEFAULT_MEAL_MODEL : model)
+    : SERVER_MEAL_MODEL;
 
   if (image && !VISION_PROVIDERS.has(providerName)) {
     return json(res, 400, {
@@ -210,7 +267,7 @@ export default async function handler(req, res) {
 
   const isVision = !!image;
   let sources = [];
-  if (body.search === true && !isVision && shouldResearch(question)) {
+  if (body.search === true && !isVision && !isMealTask && shouldResearch(question)) {
     try {
       const found = await research(question);
       sources = Array.isArray(found?.results) ? found.results : [];
@@ -247,7 +304,8 @@ export default async function handler(req, res) {
     headers["X-Title"] = "Viva";
   }
 
-  const messages = [{ role: "system", content: isVision ? VISION_SYSTEM : SYSTEM }];
+  const system = isMealTask ? MEAL_SYSTEM : (isVision ? VISION_SYSTEM : SYSTEM);
+  const messages = [{ role: "system", content: system }];
   if (isVision) {
     messages.push({
       role: "user",
@@ -260,32 +318,50 @@ export default async function handler(req, res) {
     messages.push({ role: "user", content: userText });
   }
 
-  let upstream;
-  try {
-    upstream = await fetch(provider.url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: isVision ? visionModel : model,
-        messages,
-        temperature: 0.2,
-        max_tokens: 900
-      })
-    });
-  } catch {
-    return json(res, 502, { error: "provider_unreachable" });
+  const models = isMealTask
+    ? (providerName === "openrouter" ? [...new Set([mealModel, model])] : [mealModel])
+    : isVision ? visionCandidates(providerName, visionModel) : [model];
+  let answer = "";
+  let lastStatus = 502;
+  let lastError = "O provedor não devolveu uma estimativa.";
+  for (const candidate of models) {
+    let upstream;
+    try {
+      upstream = await fetch(provider.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: candidate,
+          messages,
+          temperature: 0.2,
+          max_tokens: 1200
+        })
+      });
+    } catch {
+      lastStatus = 502;
+      lastError = "O provedor não respondeu.";
+      continue;
+    }
+
+    const data = await upstream.json().catch(() => null);
+    if (!upstream.ok) {
+      lastStatus = upstream.status;
+      lastError = safeError(data?.error?.message || data?.message || "", key);
+      continue;
+    }
+
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content === "string" && content.trim() && (!isMealTask || validMealAnswer(content))) {
+      answer = content.trim();
+      break;
+    }
+    lastStatus = 502;
+    lastError = "O provedor não devolveu uma estimativa.";
   }
 
-  const data = await upstream.json().catch(() => null);
-  if (!upstream.ok) {
-    const raw = data?.error?.message || data?.message || "";
-    return json(res, upstream.status, { error: "provider_error", message: safeError(raw, key) });
-  }
-
-  const answer = data?.choices?.[0]?.message?.content;
-  if (!answer || typeof answer !== "string") return json(res, 502, { error: "empty_answer" });
+  if (!answer) return json(res, lastStatus, { error: "provider_error", message: lastError });
   return json(res, 200, {
-    answer: answer.trim(),
+    answer,
     sources: sources.map((source) => ({ title: source.title, url: source.url, source: source.source }))
   });
 }

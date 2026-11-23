@@ -35,6 +35,7 @@ function request(body, headers = {}) {
 }
 
 const calls = [];
+const emptyVisionModels = new Set();
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url);
@@ -65,7 +66,15 @@ globalThis.fetch = async (url, options = {}) => {
     };
   }
   if (target.includes("api.openai.com") || target.includes("api.groq.com") || target.includes("openrouter.ai")) {
-    return { ok: true, json: async () => ({ choices: [{ message: { content: "resposta de teste" } }] }) };
+    const body = options.body ? JSON.parse(options.body) : {};
+    const model = body.model || "";
+    const meal = body.messages?.[0]?.content?.includes("SOMENTE com JSON") && body.messages?.[1]?.content?.includes("Pergunta:");
+    return {
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: emptyVisionModels.has(model) ? "" : meal ? '{"intent":"meal","items":[]}' : "resposta de teste" } }]
+      })
+    };
   }
   throw new Error(`fetch inesperado: ${target}`);
 };
@@ -141,13 +150,25 @@ await check("Groq usa o modelo gratuito de texto", async () => {
   assert(calls[0].body.model === "openai/gpt-oss-120b", "modelo gratuito Groq");
 });
 
-await check("OpenRouter usa o modelo gratuito com visão", async () => {
+await check("OpenRouter usa um modelo gratuito que aceita imagem", async () => {
   calls.length = 0;
   const res = response();
   await handler(request({ question: "analise", apiKey: "sk-or-user", provider: "openrouter", image }), res);
   assert(res.statusCode === 200, `status ${res.statusCode}`);
   assert(calls[0].url.includes("openrouter.ai"), "provedor OpenRouter");
-  assert(calls[0].body.model === "openrouter/free", "modelo gratuito OpenRouter");
+  assert(calls[0].body.model === "google/gemma-4-31b-it:free", "modelo de visão OpenRouter");
+});
+
+await check("visão do OpenRouter tenta o segundo modelo quando o primeiro volta vazio", async () => {
+  calls.length = 0;
+  emptyVisionModels.add("google/gemma-4-31b-it:free");
+  const res = response();
+  await handler(request({ question: "analise", apiKey: "sk-or-user", provider: "openrouter", image }), res);
+  emptyVisionModels.clear();
+  assert(res.statusCode === 200, `status ${res.statusCode}`);
+  assert(calls.length === 2, `esperava 2 tentativas, houve ${calls.length}`);
+  assert(calls[1].body.model === "nvidia/nemotron-3.5-super-vl:free", "modelo de reserva");
+  assert(res.body.answer === "resposta de teste", "resposta do reserva");
 });
 
 await check("pesquisa web anexa fontes e envia ao provedor", async () => {
@@ -203,6 +224,24 @@ await check("contexto do usuário é repassado ao provedor", async () => {
   assert(content.includes("Contexto do usuário e do app"), "rótulo do contexto");
   assert(content.includes('"name":"Ana"'), "perfil no contexto");
   assert(content.includes('"kcal":1970'), "metas no contexto");
+});
+
+await check("tarefa de refeição usa o prompt de interpretação e não pesquisa na web", async () => {
+  calls.length = 0;
+  const res = response();
+  await handler(request({
+    question: "2 ovos e um pão",
+    apiKey: "sk-user",
+    provider: "openai",
+    task: "meal",
+    search: true
+  }), res);
+  assert(res.statusCode === 200, `status ${res.statusCode}`);
+  assert(calls.length === 1, "uma chamada ao provedor");
+  const system = calls[0].body.messages[0].content;
+  assert(system.includes("SOMENTE com JSON"), "prompt de refeição");
+  assert(system.includes("\"intent\":\"meal\""), "formato de refeição");
+  assert(!calls.some((call) => call.url.includes("wikipedia.org")), "não deveria pesquisar");
 });
 
 await check("imagem em formato não permitido é recusada", async () => {
