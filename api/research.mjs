@@ -6,9 +6,12 @@ const TIMEOUT = 7000;
 
 const HEALTH = /(saude|saúde|nutri|dieta|aliment|exerc|treino|peso|emagrec|musculo|músculo|vitamina|proteina|proteína|creatina|suplement|doenca|doença|sono|glicose|colesterol|hipertens|diabet|gesta|gravidez|medic|remédio|remedio|caloria|gordura|fibra|agua|água|health|nutrition|diet|exercise|weight|muscle|vitamin|protein|creatine|supplement|disease|sleep|glucose|cholesterol|diabetes|pregnan|calorie|fat|fiber)/i;
 
-function cleanQuery(text) {
+export function cleanQuery(text) {
   return String(text || "")
-    .replace(/\b(pesquise|pesquisar|busque|buscar|procure|procurar|me\s+fale|fale\s+sobre|conte\s+sobre|explique|explica|como|o\s+que\s+[eé]|quais?\s+(são|sao)?|qual\s+(é|e)?|quantas?|quantos?|quanto|sobre|quero|queria|gostaria|preciso|posso|devo|comprar|tomar|usar|vale\s+a\s+pena|faz\s+mal|faz\s+bem|benefícios|beneficios|riscos|segurança|seguranca)\b/gi, " ")
+    .replace(/\bo\s+que\s+[eé](?=\s|$)/gi, " ")
+    .replace(/\bquais?\s+(?:são|sao|é|e)(?=\s|$)/gi, " ")
+    .replace(/\bqual\s+(?:é|e)(?=\s|$)/gi, " ")
+    .replace(/\b(pesquise|pesquisar|busque|buscar|procure|procurar|me\s+fale|fale\s+sobre|conte\s+sobre|explique|explica|como|o\s+que\s+[eé]|quais?\s+(são|sao)?|qual\s+(é|e)?|quantas?|quantos?|quanto|sobre|quero|queria|gostaria|preciso|posso|pode|devo|comprar|tomar|usar|comer|beber|vale\s+a\s+pena|faz\s+mal|faz\s+bem|benefícios|beneficios|riscos|segurança|seguranca|saber|conhecer|entender|aprender|dica|dicas|informação|informacao|informações|informacoes|ajuda|ajudar|falar|fale|dizer|diga|conte|contar|explicar|explicação|explicacao|interessa|interesse|onde|encontrar|preço|preco|me|mim|eu|você|voce|vc|por\s+favor|obrigado|obrigada)\b/gi, " ")
     .replace(/\b(a|o|as|os|um|uma|uns|umas|de|da|do|das|dos|e|em|no|na|nos|nas|para|por|com|sem|que|se|é|tem|ter|faz|fazer)\b/gi, " ")
     .replace(/[?!]/g, " ")
     .replace(/\s+/g, " ")
@@ -100,9 +103,27 @@ async function tavily(query) {
   }));
 }
 
+function normalizeText(text) {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+export function meaningfulTerms(query) {
+  return normalizeText(query)
+    .split(/\s+/)
+    .filter((term) => term.length >= 3 && !/^\d+$/.test(term));
+}
+
+export function titleScore(item, terms) {
+  const title = normalizeText(item.title);
+  return terms.filter((term) => title.includes(term)).length;
+}
+
 async function wikipedia(query) {
   const search = await getJson(
-    `https://pt.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&utf8=1&srlimit=3`
+    `https://pt.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&utf8=1&srlimit=5`
   );
   const hits = search?.query?.search || [];
   const pages = await Promise.all(hits.map(async (hit) => {
@@ -120,7 +141,14 @@ async function wikipedia(query) {
       return null;
     }
   }));
-  return pages.filter(Boolean);
+  const terms = meaningfulTerms(query);
+  return pages
+    .filter(Boolean)
+    .map((page) => ({ page, score: titleScore(page, terms) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((item) => item.page);
 }
 
 async function pubmed(query) {

@@ -4,7 +4,7 @@
   "private": true,
   "description": "Viva: assistente pessoal de saude com Supabase",
   "scripts": {
-    "test": "node tests/rls.test.mjs && node tests/foods.test.mjs && node tests/ai-proxy.test.mjs && node tests/food-api.test.mjs && node tests/e2e.test.mjs",
+    "test": "node tests/rls.test.mjs && node tests/foods.test.mjs && node tests/ai-proxy.test.mjs && node tests/research.test.mjs && node tests/food-api.test.mjs && node tests/e2e.test.mjs",
     "test:rls": "node tests/rls.test.mjs",
     "test:foods": "node tests/foods.test.mjs",
     "test:e2e": "node tests/e2e.test.mjs",
