@@ -2858,13 +2858,16 @@ img,svg{display:block}
       const label = entry.workout ? `${entry.workout} (${displayIntensity(entry.intensity)})` : entry.name;
       return `${label} por ${entry.minutes} min: cerca de ${nf(entry.kcal)} kcal gastas. Bom movimento!`;
     }
-    const researchIntent = /\b(pesquise|pesquisar|busque|buscar|procure|procurar|explique|explica|me fale|fale sobre|conte sobre|o que é|o que e|benefícios|beneficios|riscos|segurança|seguranca|creatina|suplemento|vitamina|remédio|remedio|emagrec|ganhar massa|hipertrofia|dieta|jejum|low carb|calorias|proteína|proteina|sono|exercício|exercicio|academia)\b/.test(norm);
     const shoppingIntent = /\b(comprar|compra|mercado|supermercado|preço|preco|onde encontrar)\b/.test(norm);
-    if ((researchIntent || shoppingIntent) && !RECORDING.test(norm)) {
+    if (shoppingIntent && !RECORDING.test(norm)) {
       if (!state.profile.aiEnabled) return "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso anotar refeições, água, atividade e peso.";
       return askAI(text);
     }
-    const meal = await parseMeal(text);
+    const head = text.trim().split(/\s+/).slice(0, 3).join(" ");
+    const wordQuantity = /^(?:um|uma|meio|meia|dois|duas|três|tres|quatro|cinco|seis|sete|oito|nove|dez)\b/i.test(text);
+    const nearFood = findFoodHits(head).length > 0 || /\b(g|gramas?|ml|colher|colheres|xícara|xícaras|fatia|fatias|unidade|unidades|porção|porcoes|prato|pratos|copo|copos|pote|potes|lata|latas|garrafa|garrafas)\b/.test(norm);
+    const looksLikeMeal = /\b(comi|tomei|bebi|registra|registre|registrar|anota|anote|anotar|adiciona|adicione|adicionar)\b/.test(norm) || /^\s*(?:\d|½|1\/2)/.test(text) || (wordQuantity && nearFood);
+    const meal = looksLikeMeal ? await parseMeal(text) : null;
     if (meal && meal.items.length) {
       const saved = addMeal(meal.items, meal.label);
       const list = saved.items.map((item) => `${item.name} (${nf(item.kcal)} kcal)`).join(", ");
@@ -2880,11 +2883,9 @@ img,svg{display:block}
     if (meal?.unknown?.length) {
       return `Não encontrei dados confiáveis para ${meal.unknown.map((name) => `“${name}”`).join(", ")}. Não vou inventar valores. Informe a porção e as kcal, ou use um alimento da tabela.`;
     }
-    if (question) {
-      if (!state.profile.aiEnabled) return "A IA está desligada. Ligue em Perfil para perguntas abertas. Enquanto isso, posso anotar refeições, água, atividade e peso.";
-      return askAI(text);
-    }
     if (state.profile.aiEnabled) return askAI(text);
+    const local = localAnswer(norm);
+    if (local) return local;
     return "Ainda não entendi. Tente “comi 2 ovos e um pão”, “bebi 500 ml de água”, “corri 30 min” ou “peso 78,5”.";
   }
 

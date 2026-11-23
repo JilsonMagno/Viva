@@ -1,4 +1,4 @@
-const VERSION = "viva-v2.14.0";
+const VERSION = "viva-v2.15.0";
 const SHELL = [
   "./",
   "./index.html",

@@ -700,6 +700,31 @@ await check("8c. resposta de pesquisa mostra as fontes consultadas", async () =>
   await page.close();
 });
 
+await check("8d. conversa livre sobre alimento não vira registro", async () => {
+  await resetAll();
+  await seed(demoState({ days: {} }));
+  await setConfig({ aiAnswer: "O arroz integral é uma boa fonte de carboidratos e fibras." });
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "quero saber sobre arroz integral");
+  await waitChat(page, "O arroz integral é uma boa fonte");
+  const state = await getState();
+  equal(state.aiCalls, 1, "conversa livre deveria chamar a IA");
+  const row = state.rows.find((item) => item.user_id === USER_A.id);
+  equal(row.data.days[today()]?.meals?.length || 0, 0, "não deveria registrar refeição");
+  assert(!(await chatText(page)).includes("Anotei"), "não deveria responder como registro");
+  await send(page, "uma dúvida sobre arroz");
+  const second = await waitFor(async () => {
+    const current = await getState();
+    return current.aiCalls === 2 ? current : null;
+  });
+  equal(second.aiCalls, 2, "dúvida com quantidade no início também vai para a IA");
+  const again = second.rows.find((item) => item.user_id === USER_A.id);
+  equal(again.data.days[today()]?.meals?.length || 0, 0, "dúvida não vira refeição");
+  await page.close();
+});
+
 await check("9. IA desligada e falha da IA não quebram o app", async () => {
   await resetAll();
   const base = demoState({ days: {} });

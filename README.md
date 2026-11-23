@@ -37,15 +37,15 @@ Testes:
 - `node tests/foods.test.mjs`: 7 verificações da base de alimentos (83 itens, fonte/referência, plausibilidade e consistência com a referência oficial).
 - `node tests/ai-proxy.test.mjs`: 12 verificações do proxy `/api/ai`, incluindo chave do servidor, chave do usuário, visão OpenAI, Gemini nativo, modelos gratuitos de Groq/OpenRouter, contexto do usuário, pesquisa web, pergunta pessoal sem pesquisa e recusa de foto no Groq.
 - `node tests/food-api.test.mjs`: 10 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g e ausência de dados.
-- `node tests/e2e.test.mjs`: 34 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 35 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as cinco suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 216.458 bytes crus, 55.155 bytes em gzip e 46.426 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 216.544 bytes crus, 55.255 bytes em gzip e 46.468 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.14.0`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.15.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -132,7 +132,7 @@ O contexto não inclui token de sessão, chave de IA, senha ou e-mail. O limite 
 
 ## Chat com pesquisa
 
-O campo do assistente aceita texto livre. Se a IA estiver ligada, o app manda a mensagem para a IA mesmo quando ela não parece uma pergunta ou um comando de registro. Exemplos: “quero comprar creatina”, “me fale sobre jejum intermitente” e “pesquise se whey faz mal”.
+O campo do assistente aceita texto livre. Com a IA ligada, **qualquer mensagem que não seja um registro explícito** vai para a IA: perguntas, pedidos de ideia, desabafos e conversa sobre alimentação, treino, sono ou hábitos. Exemplos: “quero saber sobre arroz integral”, “estou ansioso com meu treino”, “me fale sobre jejum intermitente” e “pesquise se whey faz mal”.
 
 O interruptor **Pesquisar na web** fica ligado por padrão. Quando ligado, o proxy:
 
@@ -141,6 +141,8 @@ O interruptor **Pesquisar na web** fica ligado por padrão. Quando ligado, o pro
 3. pede à IA para citar as fontes e não inventar dados.
 
 Perguntas sobre os seus próprios dados (“quantas calorias comi hoje?”, “quanto falta de proteína?”) não disparam pesquisa: elas usam o contexto do app. A resposta mostra uma seção **Fontes consultadas** com os links. Se a pesquisa falhar, a IA ainda responde com o contexto e sinaliza a incerteza.
+
+O registro continua determinístico: só vira refeição quando a mensagem tem um verbo explícito (“comi”, “registra”, “anota”) ou começa com quantidade (“2 ovos”, “100 g de arroz”). “Quero saber sobre arroz integral” é conversa; “2 ovos e um pão” é registro. As respostas locais prontas só entram quando a IA está desligada ou falha.
 
 ## Editar refeição
 
