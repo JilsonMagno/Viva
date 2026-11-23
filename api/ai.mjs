@@ -140,7 +140,8 @@ function validMealAnswer(text) {
   if (start < 0 || end <= start) return false;
   try {
     const data = JSON.parse(raw.slice(start, end + 1));
-    return !!data && (["meal", "correction"].includes(data.intent) || Array.isArray(data.items));
+    const hasItems = Array.isArray(data?.items) && data.items.length > 0;
+    return !!data && ["meal", "correction"].includes(data.intent) && hasItems;
   } catch {
     return false;
   }
@@ -339,7 +340,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: candidate,
           messages,
-          temperature: 0.2,
+          temperature: isMealTask ? 0 : 0.2,
           max_tokens: 1200
         })
       });

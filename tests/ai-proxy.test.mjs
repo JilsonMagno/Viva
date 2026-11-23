@@ -72,7 +72,7 @@ globalThis.fetch = async (url, options = {}) => {
     return {
       ok: true,
       json: async () => ({
-        choices: [{ message: { content: emptyVisionModels.has(model) ? "" : meal ? '{"intent":"meal","items":[]}' : "resposta de teste" } }]
+        choices: [{ message: { content: emptyVisionModels.has(model) ? "" : meal ? '{"intent":"meal","items":[{"name":"teste","query":"teste","quantity":1}]}' : "resposta de teste" } }]
       })
     };
   }

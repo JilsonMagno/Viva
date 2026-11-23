@@ -18,7 +18,7 @@
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
-  const APP_VERSION = "2.16.3";
+  const APP_VERSION = "2.16.4";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -1865,6 +1865,25 @@
     return fitAIContext(context);
   }
 
+  function aiMealContext(question = "") {
+    const full = aiContext(question);
+    return {
+      app: full.app,
+      profile: {
+        age: full.profile.age,
+        heightCm: full.profile.heightCm,
+        weightKg: full.profile.weightKg,
+        goal: full.profile.goal
+      },
+      targets: full.targets,
+      today: {
+        date: full.today?.date,
+        meals: full.today?.meals || []
+      },
+      chat: (full.chat || []).slice(-6)
+    };
+  }
+
   function answerWithSources(answer, sources) {
     const list = Array.isArray(sources)
       ? sources.filter((source) => source && source.title && /^https?:\/\//i.test(source.url || "")).slice(0, 5)
@@ -1899,7 +1918,14 @@
         }
         const provider = config.provider || "openai";
         const model = config.model || "";
-        const payload = { question, message: question, context: aiContext(question), provider, model, search: wantsSearch };
+        const payload = {
+          question,
+          message: question,
+          context: options.task === "meal" ? aiMealContext(question) : aiContext(question),
+          provider,
+          model,
+          search: wantsSearch
+        };
         if (options.task) payload.task = options.task;
         if (config.source === "own") payload.apiKey = config.key;
         if (options.image) payload.image = options.image;
@@ -2251,7 +2277,8 @@
       if (correction && aiInterpretation?.intent !== "correction") {
         return "Não consegui aplicar a correção com segurança. Diga a refeição, o alimento e a quantidade, por exemplo: “na verdade, no café da manhã, 1 fatia de queijo minas”.";
       }
-      const aiReply = await handleAIMeal(text, aiInterpretation);
+      const usable = aiInterpretation && (aiInterpretation.intent === "correction" || aiInterpretation.items?.length);
+      const aiReply = usable ? await handleAIMeal(text, aiInterpretation) : null;
       if (aiReply) return aiReply;
     }
     if (correction) {

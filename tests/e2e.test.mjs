@@ -955,6 +955,27 @@ await check("8m. correção sem JSON estruturado não altera a refeição", asyn
   await page.close();
 });
 
+await check("8n. resposta vazia da IA cai no parser local", async () => {
+  await resetAll();
+  await seed(demoState({ days: {} }));
+  await setConfig({
+    mealAnswer: JSON.stringify({ intent: "meal", items: [], missing: [], question: "Qual refeição?" })
+  });
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await send(page, "2 fatias de queijo");
+  await waitChat(page, "Anotei no café da manhã");
+  const meal = await waitFor(async () => {
+    const row = await rowFor(USER_A.id);
+    const meals = row?.data.days[today()]?.meals || [];
+    return meals.length ? meals[0] : null;
+  });
+  equal(meal.items[0].name, "Queijo muçarela", "parser local assumiu");
+  equal(meal.items[0].grams, 60, "duas fatias");
+  await page.close();
+});
+
 await check("8j. botão Reportar envia mensagem e contexto", async () => {
   await resetAll();
   await seed(demoState({ days: {} }));
@@ -978,7 +999,7 @@ await check("8j. botão Reportar envia mensagem e contexto", async () => {
     return current.reports?.length ? current.reports[0] : null;
   });
   equal(report.question, "sardinha", "pergunta enviada");
-  equal(report.version, "2.16.3", "versão enviada");
+  equal(report.version, "2.16.4", "versão enviada");
   equal(report.profile.name, undefined, "nome não deve ir no relatório");
   assert(report.today.meals.length === 1, "refeição deveria ir no contexto");
   await page.close();
