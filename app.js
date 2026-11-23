@@ -495,6 +495,7 @@
     if (currentView === "diario") renderDiary();
     if (currentView === "perfil") renderProfile();
     if (currentView === "viva") renderChat();
+    else document.body.classList.remove("chat-typing");
     if (currentView === "hoje" || currentView === "alimentacao" || currentView === "atividades") renderToday();
   }
 
@@ -3166,6 +3167,29 @@
     if (dirty) saveNow();
   }
 
+  function syncChatViewport() {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    document.documentElement.style.setProperty("--vv-height", `${Math.round(viewport.height)}px`);
+    document.documentElement.style.setProperty("--vv-top", `${Math.round(viewport.offsetTop)}px`);
+    if (!document.body.classList.contains("chat-typing")) return;
+    if (document.activeElement !== $("#chat-input") && !keyboardOpen()) {
+      document.body.classList.remove("chat-typing");
+      return;
+    }
+    requestAnimationFrame(keepChatVisible);
+  }
+
+  function keyboardOpen() {
+    const viewport = window.visualViewport;
+    return !!viewport && window.innerHeight - viewport.height > 120;
+  }
+
+  function keepChatVisible() {
+    const log = $("#chat-log");
+    if (log) log.scrollTop = log.scrollHeight;
+  }
+
   function autoGrow() {
     const input = $("#chat-input");
     input.style.height = "auto";
@@ -3244,7 +3268,27 @@
         sendChat($("#chat-input").value);
       }
     });
-    $("#chat-input").addEventListener("input", autoGrow);
+    $("#chat-input").addEventListener("focus", () => {
+      document.body.classList.add("chat-typing");
+      syncChatViewport();
+      requestAnimationFrame(keepChatVisible);
+      setTimeout(keepChatVisible, 260);
+    });
+    $("#chat-input").addEventListener("blur", () => {
+      setTimeout(() => {
+        if (document.activeElement === $("#chat-input") || keyboardOpen()) return;
+        document.body.classList.remove("chat-typing");
+      }, 180);
+    });
+    $("#chat-input").addEventListener("input", () => {
+      autoGrow();
+      if (document.body.classList.contains("chat-typing")) keepChatVisible();
+    });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", syncChatViewport);
+      window.visualViewport.addEventListener("scroll", syncChatViewport);
+    }
+    syncChatViewport();
     for (const suggestion of $$("[data-sug]")) suggestion.addEventListener("click", () => sendChat(suggestion.dataset.sug));
     $("#meal-list").addEventListener("click", (event) => {
       const button = event.target.closest("[data-del-meal]");

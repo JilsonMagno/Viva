@@ -43,10 +43,10 @@ Testes:
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 216.544 bytes crus, 55.255 bytes em gzip e 46.468 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 218.991 bytes crus, 55.791 bytes em gzip e 46.915 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.15.0`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.15.1`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -144,6 +144,8 @@ O interruptor **Pesquisar na web** fica ligado por padrão. Quando ligado, o pro
 Perguntas sobre os seus próprios dados (“quantas calorias comi hoje?”, “quanto falta de proteína?”) não disparam pesquisa: elas usam o contexto do app. A resposta mostra uma seção **Fontes consultadas** com os links. Se a pesquisa falhar, a IA ainda responde com o contexto e sinaliza a incerteza.
 
 O registro continua determinístico: só vira refeição quando a mensagem tem um verbo explícito (“comi”, “registra”, “anota”) ou começa com quantidade (“2 ovos”, “100 g de arroz”). “Quero saber sobre arroz integral” é conversa; “2 ovos e um pão” é registro. As respostas locais prontas só entram quando a IA está desligada ou falha.
+
+No celular, ao tocar no campo de mensagem, o chat ocupa a tela acima do teclado. Cabeçalho, sugestões, aviso e abas saem de cena; o histórico fica visível e rola para a última mensagem enquanto você digita. Ao sair do campo, a tela volta ao normal.
 
 ## Editar refeição
 

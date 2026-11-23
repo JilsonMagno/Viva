@@ -940,6 +940,37 @@ await check("16. interface mobile não vaza na horizontal e tem nomes acessívei
     const width = await page.evaluate(() => document.documentElement.scrollWidth);
     assert(width <= 390, `${view} vaza na horizontal: ${width}`);
   }
+  await goView(page, "viva");
+  await page.focus("#chat-input");
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  const typing = await page.evaluate(() => {
+    const view = document.getElementById("view-viva").getBoundingClientRect();
+    const form = document.getElementById("chat-form").getBoundingClientRect();
+    const log = document.getElementById("chat-log").getBoundingClientRect();
+    return {
+      classOn: document.body.classList.contains("chat-typing"),
+      head: getComputedStyle(document.querySelector(".chat-head")).display,
+      viewTop: view.top,
+      viewHeight: view.height,
+      formBottom: form.bottom,
+      logHeight: log.height,
+      innerHeight
+    };
+  });
+  assert(typing.classOn, "foco no chat deveria ativar o modo de digitação");
+  equal(typing.head, "none", "cabeçalho sai de cena para dar lugar à conversa");
+  assert(typing.viewTop >= -1, "chat fica no topo visível");
+  assert(typing.viewHeight >= 400, `chat precisa ocupar a tela: ${typing.viewHeight}`);
+  assert(typing.logHeight >= 200, `histórico precisa aparecer: ${typing.logHeight}`);
+  assert(typing.formBottom <= typing.innerHeight + 1, "campo precisa ficar acima do teclado");
+  await page.evaluate(() => document.getElementById("chat-input").blur());
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const after = await page.evaluate(() => ({
+    classOn: document.body.classList.contains("chat-typing"),
+    head: getComputedStyle(document.querySelector(".chat-head")).display
+  }));
+  assert(!after.classOn, "sair do campo deveria fechar o modo de digitação");
+  assert(after.head !== "none", "cabeçalho volta ao sair do campo");
   await page.close();
 });
 
