@@ -526,6 +526,9 @@
     const form = $("#reset-form");
     if (form) form.reset();
     setAuthMessage("#reset-error");
+    setAuthMessage("#reset-note");
+    const back = $("#btn-reset-back");
+    if (back) back.textContent = state ? "Voltar" : "Voltar ao login";
     setTimeout(() => $("#reset-password")?.focus(), 40);
   }
 
