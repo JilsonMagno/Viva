@@ -18,7 +18,7 @@
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
-  const APP_VERSION = "2.16.5";
+  const APP_VERSION = "2.17.0";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -184,6 +184,7 @@
   let chatBusy = false;
   let deleteArmed = 0;
   let editingMealId = null;
+  let authMode = "login";
   let installPrompt = null;
   const waterUndo = [];
 
@@ -362,7 +363,7 @@
     toastTimer = setTimeout(() => { el.dataset.show = "false"; }, 2800);
   }
 
-  const SCREENS = ["boot", "screen-config", "screen-login", "screen-onboarding", "screen-main"];
+  const SCREENS = ["boot", "screen-config", "screen-login", "screen-reset", "screen-onboarding", "screen-main"];
   function show(id) {
     for (const name of SCREENS) {
       const el = document.getElementById(name);
@@ -375,15 +376,252 @@
     storeSession(null);
     state = null;
     user = null;
+    $("#auth-form")?.reset();
+    setAuthMode("login");
     show("screen-login");
     toast("Sua sessão expirou. Entre de novo.");
+  }
+
+  function setAuthMessage(id, message = "", tone = "error") {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = message;
+    el.dataset.tone = tone;
+    el.hidden = !message;
+  }
+
+  function authErrorText(err) {
+    const data = err?.payload || {};
+    const code = String(data.error_code || data.code || data.error || "").toLowerCase();
+    const detail = String(data.msg || data.message || data.error_description || "").toLowerCase();
+    const all = `${code} ${detail}`;
+    if (/email_not_confirmed|email not confirmed/.test(all)) return "Confirme seu email antes de entrar. Verifique a caixa de entrada e o spam.";
+    if (/invalid.*credential|invalid_grant|invalid login/.test(all)) return "Email ou senha incorretos.";
+    if (/user_already_exists|already registered|already exists/.test(all)) return "Já existe uma conta com este email. Entre ou use “Esqueci a senha”.";
+    if (/weak_password|password.*short/.test(all)) return "A senha precisa ter pelo menos 8 caracteres.";
+    if (/signup.*disabled|email.*disabled/.test(all)) return "O cadastro por email está desativado no servidor.";
+    if (err?.status === 429 || /rate|too many|limite/.test(all)) return "Muitas tentativas. Espere alguns minutos e tente de novo.";
+    if (err?.status === 0) return "Sem conexão. Verifique a internet e tente de novo.";
+    return "Não foi possível concluir. Tente de novo em instantes.";
+  }
+
+  function setAuthMode(mode) {
+    authMode = ["login", "signup", "recover"].includes(mode) ? mode : "login";
+    const signup = authMode === "signup";
+    const recover = authMode === "recover";
+    const passwordField = $("#auth-password")?.closest(".field");
+    if (passwordField) passwordField.hidden = recover;
+    const password = $("#auth-password");
+    if (password) {
+      password.required = !recover;
+      password.setAttribute("autocomplete", signup ? "new-password" : "current-password");
+    }
+    const submit = $("#btn-email");
+    if (submit) submit.textContent = recover ? "Enviar link de recuperação" : signup ? "Criar conta" : "Entrar com email";
+    const signupButton = $("#btn-signup");
+    if (signupButton) signupButton.textContent = signup ? "Já tenho conta" : recover ? "Voltar ao login" : "Criar conta";
+    const recoverButton = $("#btn-recover");
+    if (recoverButton) recoverButton.hidden = signup || recover;
+    setAuthMessage("#auth-error");
+    setAuthMessage("#auth-note");
+    $("#auth-email")?.removeAttribute("aria-invalid");
+    $("#auth-password")?.removeAttribute("aria-invalid");
+  }
+
+  async function recoverPassword(email) {
+    const verifier = randomVerifier();
+    const challenge = await pkceChallenge(verifier);
+    const redirectTo = location.origin + location.pathname;
+    localStorage.setItem(LS_PKCE, JSON.stringify({ verifier, redirectTo, mode: "recovery", at: Date.now() }));
+    const res = await fetch(`${SB}/auth/v1/recover`, {
+      method: "POST",
+      headers: { apikey: KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        code_challenge: challenge,
+        code_challenge_method: "s256",
+        email_redirect_to: redirectTo
+      })
+    });
+    if (!res.ok) throw new ApiError("auth", res.status, await safeJson(res));
+    setAuthMode("login");
+    setAuthMessage("#auth-note", "Se este email existir, enviamos um link para redefinir a senha. Confira a caixa de entrada e o spam.", "ok");
+  }
+
+  async function submitEmailAuth(event) {
+    event.preventDefault();
+    const email = ($("#auth-email")?.value || "").trim().toLowerCase();
+    const password = $("#auth-password")?.value || "";
+    const emailInput = $("#auth-email");
+    const passwordInput = $("#auth-password");
+    const button = $("#btn-email");
+    setAuthMessage("#auth-error");
+    setAuthMessage("#auth-note");
+    emailInput?.removeAttribute("aria-invalid");
+    passwordInput?.removeAttribute("aria-invalid");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      emailInput?.setAttribute("aria-invalid", "true");
+      setAuthMessage("#auth-error", "Digite um email válido.");
+      emailInput?.focus();
+      return;
+    }
+    if (authMode !== "recover" && password.length < (authMode === "signup" ? 8 : 1)) {
+      passwordInput?.setAttribute("aria-invalid", "true");
+      setAuthMessage("#auth-error", authMode === "signup" ? "A senha precisa ter pelo menos 8 caracteres." : "Digite sua senha.");
+      passwordInput?.focus();
+      return;
+    }
+    if (button) button.disabled = true;
+    try {
+      if (authMode === "recover") {
+        await recoverPassword(email);
+        return;
+      }
+      if (authMode === "signup") {
+        const verifier = randomVerifier();
+        const challenge = await pkceChallenge(verifier);
+        const redirectTo = location.origin + location.pathname;
+        localStorage.setItem(LS_PKCE, JSON.stringify({ verifier, redirectTo, mode: "signup", at: Date.now() }));
+        const res = await fetch(`${SB}/auth/v1/signup`, {
+          method: "POST",
+          headers: { apikey: KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            password,
+            data: {},
+            code_challenge: challenge,
+            code_challenge_method: "s256",
+            email_redirect_to: redirectTo
+          })
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new ApiError("auth", res.status, data);
+        if (!data?.access_token) {
+          setAuthMode("login");
+          setAuthMessage("#auth-note", "Conta criada. Confirme seu email pelo link enviado e depois entre.", "ok");
+          return;
+        }
+        localStorage.removeItem(LS_PKCE);
+        const session = normalizeSession(data);
+        storeSession(session);
+        user = session.user;
+        show("boot");
+        await enterApp();
+        return;
+      }
+      const session = await tokenRequest("password", { email, password });
+      storeSession(session);
+      user = session.user;
+      show("boot");
+      await enterApp();
+    } catch (err) {
+      setAuthMessage("#auth-error", authErrorText(err));
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  function showReset() {
+    show("screen-reset");
+    const form = $("#reset-form");
+    if (form) form.reset();
+    setAuthMessage("#reset-error");
+    setTimeout(() => $("#reset-password")?.focus(), 40);
+  }
+
+  async function submitReset(event) {
+    event.preventDefault();
+    const password = $("#reset-password")?.value || "";
+    const confirm = $("#reset-confirm")?.value || "";
+    const button = $("#btn-reset");
+    setAuthMessage("#reset-error");
+    $("#reset-password")?.removeAttribute("aria-invalid");
+    $("#reset-confirm")?.removeAttribute("aria-invalid");
+    if (password.length < 8) {
+      $("#reset-password")?.setAttribute("aria-invalid", "true");
+      setAuthMessage("#reset-error", "A senha precisa ter pelo menos 8 caracteres.");
+      return;
+    }
+    if (password !== confirm) {
+      $("#reset-confirm")?.setAttribute("aria-invalid", "true");
+      setAuthMessage("#reset-error", "As senhas não conferem.");
+      return;
+    }
+    const session = await ensureSession();
+    if (!session) {
+      sessionLost();
+      return;
+    }
+    if (button) button.disabled = true;
+    try {
+      const res = await fetch(`${SB}/auth/v1/user`, {
+        method: "PUT",
+        headers: { apikey: KEY, Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ password })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new ApiError("auth", res.status, data);
+      toast("Senha atualizada.");
+      if (state) showMain();
+      else {
+        show("boot");
+        await enterApp();
+      }
+    } catch (err) {
+      setAuthMessage("#reset-error", authErrorText(err));
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function fetchAuthUser(accessToken) {
+    const res = await fetch(`${SB}/auth/v1/user`, {
+      headers: { apikey: KEY, Authorization: `Bearer ${accessToken}` }
+    });
+    if (!res.ok) return null;
+    return res.json().catch(() => null);
+  }
+
+  async function handleHashSession() {
+    const params = new URLSearchParams(location.hash.replace(/^#/, ""));
+    if (params.get("error")) {
+      show("screen-login");
+      toast(params.get("error_description") || "Login cancelado.");
+      history.replaceState({}, "", location.pathname + location.search);
+      return true;
+    }
+    const accessToken = params.get("access_token");
+    if (!accessToken) return false;
+    const type = params.get("type") || "";
+    const authUser = await fetchAuthUser(accessToken);
+    if (!authUser) {
+      show("screen-login");
+      toast("Não foi possível concluir o login. Tente de novo.");
+      return true;
+    }
+    const session = normalizeSession({
+      access_token: accessToken,
+      refresh_token: params.get("refresh_token") || "",
+      expires_in: Number(params.get("expires_in")) || 3600,
+      user: authUser
+    });
+    storeSession(session);
+    user = session.user;
+    history.replaceState({}, "", location.pathname + location.search);
+    if (type === "recovery") {
+      showReset();
+      return true;
+    }
+    show("boot");
+    await enterApp();
+    return true;
   }
 
   async function startLogin() {
     const verifier = randomVerifier();
     const challenge = await pkceChallenge(verifier);
     const redirectTo = location.origin + location.pathname;
-    sessionStorage.setItem(LS_PKCE, JSON.stringify({ verifier, redirectTo, at: Date.now() }));
+    localStorage.setItem(LS_PKCE, JSON.stringify({ verifier, redirectTo, at: Date.now() }));
     const params = new URLSearchParams({
       provider: "google",
       redirect_to: redirectTo,
@@ -430,13 +668,14 @@
   }
 
   async function handleCallback() {
+    if (await handleHashSession()) return true;
     const params = new URLSearchParams(location.search);
     const code = params.get("code");
     const error = params.get("error");
     if (!code && !error) return false;
 
-    const stored = sessionStorage.getItem(LS_PKCE);
-    sessionStorage.removeItem(LS_PKCE);
+    const stored = localStorage.getItem(LS_PKCE);
+    localStorage.removeItem(LS_PKCE);
     history.replaceState({}, "", location.pathname + location.hash);
 
     if (error) {
@@ -446,14 +685,18 @@
     }
     if (!stored) {
       show("screen-login");
-      toast("Sessão de login expirada. Tente novamente.");
+      toast("Confirme seu email e entre de novo.");
       return true;
     }
     try {
-      const { verifier } = JSON.parse(stored);
+      const { verifier, mode } = JSON.parse(stored);
       const session = await tokenRequest("pkce", { auth_code: code, code_verifier: verifier });
       storeSession(session);
       user = session.user;
+      if (mode === "recovery") {
+        showReset();
+        return true;
+      }
       show("boot");
       await enterApp();
     } catch {
@@ -514,6 +757,8 @@
     storeSession(null);
     state = null;
     user = null;
+    $("#auth-form")?.reset();
+    setAuthMode("login");
     show("screen-login");
   }
 
@@ -3508,6 +3753,8 @@
     const last = state.weights.length ? state.weights[state.weights.length - 1] : null;
     const lastText = last ? `último peso ${nf1(last.kg)} kg em ${fmtDay(parseYmd(last.date))}` : "sem registro de peso";
     $("#profile-targets-note").textContent = `IMC ${nf1(bmi(state.profile.weightKg, state.profile.heightCm))} · água ${nf1(target.waterMl / 1000)} L · ${lastText}. Salve para recalcular as metas.`;
+    const change = $("#btn-change-password");
+    if (change) change.hidden = !user?.email;
     setAvatar();
   }
 
@@ -3672,7 +3919,23 @@
     if (CFG.AUTH_GOOGLE === false) $("#btn-google").hidden = true;
     $("#btn-google").addEventListener("click", startLogin);
     const anon = $("#btn-anon");
-    if (anon) anon.addEventListener("click", loginAnonymous);
+    if (anon) {
+      anon.hidden = CFG.AUTH_VISITOR !== true;
+      anon.addEventListener("click", loginAnonymous);
+    }
+    $("#auth-form").addEventListener("submit", submitEmailAuth);
+    $("#btn-signup").addEventListener("click", () => setAuthMode(authMode === "login" ? "signup" : "login"));
+    $("#btn-recover").addEventListener("click", () => setAuthMode("recover"));
+    $("#reset-form").addEventListener("submit", submitReset);
+    $("#btn-reset-back").addEventListener("click", () => {
+      if (state) showMain();
+      else {
+        setAuthMode("login");
+        show("screen-login");
+      }
+    });
+    $("#btn-change-password").addEventListener("click", showReset);
+    setAuthMode("login");
     $("#onb-form").addEventListener("submit", submitOnboarding);
     for (const id of ["onb-age", "onb-height", "onb-weight"]) $("#" + id).addEventListener("input", updateOnboardingPreview);
     for (const radio of $$("input[name=goal]")) radio.addEventListener("change", updateOnboardingPreview);

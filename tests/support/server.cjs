@@ -74,7 +74,10 @@ const state = {
   foodCalls: 0,
   foodQueries: [],
   reports: [],
-  authorizeMode: "redirect"
+  authorizeMode: "redirect",
+  passwords: new Map(),
+  emailConfirm: false,
+  recoveries: []
 };
 
 function reset() {
@@ -109,6 +112,12 @@ function reset() {
   state.foodQueries = [];
   state.reports = [];
   state.authorizeMode = "redirect";
+  for (const id of [...USERS.keys()]) {
+    if (id !== USER_A.id && id !== USER_B.id) USERS.delete(id);
+  }
+  state.passwords.clear();
+  state.emailConfirm = false;
+  state.recoveries = [];
 }
 
 function json(res, body, status = 200, extra = {}) {
@@ -209,7 +218,7 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === "/config.js") {
     res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-store" });
-    res.end(`window.VIVA_CONFIG = { SUPABASE_URL: "/sb", SUPABASE_ANON_KEY: "test-anon", AI_FUNCTION: "assistente", AI_ENDPOINT: ${JSON.stringify(state.aiEndpoint)} };`);
+    res.end(`window.VIVA_CONFIG = { SUPABASE_URL: "/sb", SUPABASE_ANON_KEY: "test-anon", AI_FUNCTION: "assistente", AI_ENDPOINT: ${JSON.stringify(state.aiEndpoint)}, AUTH_VISITOR: true };`);
     return;
   }
 
@@ -274,6 +283,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === "/__test/config" && req.method === "POST") {
     const body = (await readJson(req)) || {};
     if (body.authorizeMode) state.authorizeMode = body.authorizeMode;
+    if ("emailConfirm" in body) state.emailConfirm = !!body.emailConfirm;
     if (body.aiMode) state.aiMode = body.aiMode;
     if (body.foodMode) state.foodMode = body.foodMode;
     if (body.foodResult) state.foodResult = body.foodResult;
@@ -325,6 +335,8 @@ const server = http.createServer(async (req, res) => {
       foodCalls: state.foodCalls,
       foodQueries: state.foodQueries,
       reports: state.reports,
+      recoveries: state.recoveries,
+      emailUsers: [...USERS.values()].filter((user) => user.email).map((user) => user.email),
       tokens: [...state.tokens.keys()],
       refreshTokens: [...state.refresh.keys()]
     });
@@ -341,7 +353,29 @@ const server = http.createServer(async (req, res) => {
   if (pathname === "/sb/auth/v1/signup" && req.method === "POST") {
     const body = (await readJson(req)) || {};
     if (body.email || body.password) {
-      json(res, { error: "email_signup_not_supported" }, 400);
+      const email = String(body.email || "").trim().toLowerCase();
+      const password = String(body.password || "");
+      if (!email || !password) {
+        json(res, { error: "validation_failed", msg: "Email e senha são obrigatórios." }, 400);
+        return;
+      }
+      if ([...USERS.values()].some((user) => String(user.email || "").toLowerCase() === email)) {
+        json(res, { error: "user_already_exists", msg: "User already registered" }, 400);
+        return;
+      }
+      const user = {
+        id: crypto.randomUUID(),
+        email,
+        user_metadata: {},
+        app_metadata: { provider: "email", providers: ["email"] }
+      };
+      USERS.set(user.id, user);
+      state.passwords.set(email, password);
+      if (state.emailConfirm) {
+        json(res, { user });
+        return;
+      }
+      json(res, issue(user));
       return;
     }
     const user = {
@@ -353,6 +387,13 @@ const server = http.createServer(async (req, res) => {
     };
     USERS.set(user.id, user);
     json(res, issue(user));
+    return;
+  }
+
+  if (pathname === "/sb/auth/v1/recover" && req.method === "POST") {
+    const body = (await readJson(req)) || {};
+    state.recoveries.push({ email: String(body.email || "").toLowerCase(), code_challenge: body.code_challenge || null });
+    json(res, {});
     return;
   }
 
@@ -405,6 +446,16 @@ const server = http.createServer(async (req, res) => {
       json(res, issue(userById(userId)));
       return;
     }
+    if (grant === "password") {
+      const email = String(body.email || "").trim().toLowerCase();
+      const user = [...USERS.values()].find((item) => String(item.email || "").toLowerCase() === email);
+      if (!user || state.passwords.get(email) !== String(body.password || "")) {
+        json(res, { error: "invalid_grant", error_description: "Invalid login credentials" }, 400);
+        return;
+      }
+      json(res, issue(user));
+      return;
+    }
     json(res, { error: "unsupported_grant_type" }, 400);
     return;
   }
@@ -413,6 +464,13 @@ const server = http.createServer(async (req, res) => {
     const userId = authUserId(req);
     if (!userId) {
       json(res, { message: "invalid claim: missing sub claim" }, 401);
+      return;
+    }
+    if (req.method === "PUT") {
+      const body = (await readJson(req)) || {};
+      const user = userById(userId);
+      if (body.password && user?.email) state.passwords.set(String(user.email).toLowerCase(), String(body.password));
+      json(res, user);
       return;
     }
     json(res, userById(userId));
