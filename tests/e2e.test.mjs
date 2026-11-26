@@ -229,6 +229,32 @@ await check("1c. importar pela tela de entrada abre o visitante e o importador",
   await context.close();
 });
 
+await check("1d. importa o backup direto no primeiro acesso e entra no app", async () => {
+  await resetAll();
+  const context = await browser.createBrowserContext();
+  const page = await context.newPage();
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.goto(`${BASE}/?sw=0`, { waitUntil: "domcontentloaded", timeout: 15000 });
+  await page.waitForFunction(() => !document.getElementById("screen-login").hidden, { timeout: 5000 });
+  await page.click("#btn-import-login");
+  await waitOnboarding(page);
+  await page.waitForFunction(() => document.getElementById("import-dialog").open, { timeout: 5000 });
+  const base = demoState();
+  const backup = demoState({ profile: { ...base.profile, name: "Edson Santos" } });
+  await page.$eval("#import-text", (element, value) => {
+    element.value = value;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  }, JSON.stringify({ data: backup }));
+  await page.waitForFunction(() => !document.getElementById("btn-import-confirm").disabled, { timeout: 5000 });
+  await page.click("#btn-import-confirm");
+  await waitMain(page);
+  assert((await textOf(page, "#greet-title")).includes("Edson"), "importação no primeiro acesso deveria abrir o app");
+  const state = await getState();
+  equal(state.rows.length, 1, "deveria gravar a linha do visitante");
+  equal(state.rows[0].data.profile.name, "Edson Santos", "nome importado no primeiro acesso");
+  await context.close();
+});
+
 await check("2. sessão expirada é renovada com refresh token", async () => {
   await resetAll();
   await seed(demoState());
@@ -1150,7 +1176,7 @@ await check("8j. botão Reportar envia mensagem e contexto", async () => {
     return current.reports?.length ? current.reports[0] : null;
   });
   equal(report.question, "sardinha", "pergunta enviada");
-  equal(report.version, "2.21.0", "versão enviada");
+  equal(report.version, "2.22.0", "versão enviada");
   equal(report.profile.name, undefined, "nome não deve ir no relatório");
   assert(report.today.meals.length === 1, "refeição deveria ir no contexto");
   await page.close();
@@ -1247,10 +1273,7 @@ await check("10b. importa o backup antigo pela opção do Perfil", async () => {
   await page.waitForFunction(() => !document.getElementById("btn-import-confirm").disabled, { timeout: 5000 });
   assert((await textOf(page, "#import-status")).includes("Edson Santos"), "prévia deveria mostrar o perfil importado");
   await page.click("#btn-import-confirm");
-  await waitFor(async () => {
-    const row = await rowFor(USER_A.id);
-    return row && row.data.profile.name === "Edson Santos" ? row : null;
-  });
+  await page.waitForFunction(() => document.getElementById("greet-title").textContent.includes("Edson"), { timeout: 5000 });
   assert((await textOf(page, "#greet-title")).includes("Edson"), "saudação deveria usar o nome importado");
   let row = await rowFor(USER_A.id);
   equal(row.data.days[today()].waterMl, 750, "água importada");
@@ -1259,6 +1282,71 @@ await check("10b. importa o backup antigo pela opção do Perfil", async () => {
   row = await rowFor(USER_A.id);
   equal(row.data.profile.name, "Edson Santos", "importação deveria persistir");
   assert((await textOf(page, "#greet-title")).includes("Edson"), "nome importado deveria persistir");
+  await page.close();
+});
+
+await check("10c. importa a linha mais recente quando o JSON tem várias", async () => {
+  await resetAll();
+  await seed(demoState());
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await goView(page, "perfil");
+  await page.click("#btn-import");
+  const base = demoState();
+  const older = demoState({
+    profile: { ...base.profile, name: "Edson antigo" },
+    days: { [today()]: { meals: [], waterMl: 100, activities: [], weightKg: null } }
+  });
+  const newer = demoState({
+    profile: { ...base.profile, name: "Edson novo" },
+    days: { [today()]: { meals: [], waterMl: 900, activities: [], weightKg: null } }
+  });
+  await page.$eval("#import-text", (element, value) => {
+    element.value = value;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  }, JSON.stringify([
+    { updated_at: "2026-01-01T00:00:00.000Z", data: older },
+    { updated_at: "2026-02-01T00:00:00.000Z", data: newer }
+  ]));
+  await page.waitForFunction(() => !document.getElementById("btn-import-confirm").disabled, { timeout: 5000 });
+  const status = await textOf(page, "#import-status");
+  assert(status.includes("Edson novo"), "prévia deveria escolher a linha mais recente");
+  assert(status.includes("linha mais recente de 2"), "prévia deveria avisar qual linha foi usada");
+  await page.click("#btn-import-confirm");
+  await waitFor(async () => {
+    const row = await rowFor(USER_A.id);
+    return row && row.data.profile.name === "Edson novo" ? row : null;
+  });
+  const row = await rowFor(USER_A.id);
+  equal(row.data.days[today()].waterMl, 900, "deveria importar a linha mais recente");
+  await page.close();
+});
+
+await check("10d. importa o resultado em CSV copiado do Supabase", async () => {
+  await resetAll();
+  await seed(demoState());
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await goView(page, "perfil");
+  await page.click("#btn-import");
+  const base = demoState();
+  const backup = demoState({
+    profile: { ...base.profile, name: "Edson CSV" },
+    days: { [today()]: { meals: [], waterMl: 650, activities: [], weightKg: null } }
+  });
+  const csv = `updated_at,data\n2026-02-01T00:00:00.000Z,"${JSON.stringify(backup).replace(/"/g, '""')}"`;
+  await page.$eval("#import-text", (element, value) => {
+    element.value = value;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  }, csv);
+  await page.waitForFunction(() => !document.getElementById("btn-import-confirm").disabled, { timeout: 5000 });
+  assert((await textOf(page, "#import-status")).includes("Edson CSV"), "prévia deveria ler o CSV");
+  await page.click("#btn-import-confirm");
+  await page.waitForFunction(() => document.getElementById("greet-title").textContent.includes("Edson"), { timeout: 5000 });
+  const row = await rowFor(USER_A.id);
+  equal(row.data.days[today()].waterMl, 650, "água importada do CSV");
   await page.close();
 });
 

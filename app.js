@@ -18,7 +18,7 @@
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
-  const APP_VERSION = "2.21.0";
+  const APP_VERSION = "2.22.0";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -184,7 +184,6 @@
   let chatBusy = false;
   let deleteArmed = 0;
   let pendingImport = null;
-  let importTimer = null;
   let editingMealId = null;
   let selectedDayKey = ymd();
   let installPrompt = null;
@@ -3712,19 +3711,97 @@
     toast("Exportação pronta.");
   }
 
+  function unwrapImportState(value) {
+    let next = value;
+    for (let depth = 0; typeof next === "string" && depth < 3; depth += 1) next = JSON.parse(next);
+    if (next && typeof next.data === "string") next = JSON.parse(next.data);
+    else if (next && next.data && typeof next.data === "object") next = next.data;
+    if (next && next.state && typeof next.state === "object") next = next.state;
+    if (!next || typeof next !== "object" || !next.profile || typeof next.profile !== "object") return null;
+    if (Array.isArray(next.days)) {
+      next = { ...next, days: Object.fromEntries(next.days.filter((day) => day?.date).map((day) => [day.date, day])) };
+    }
+    if (!next.days || typeof next.days !== "object") next = { ...next, days: {} };
+    const state = migrate(next);
+    if (!state.profile.onboardedAt && state.profile.age && state.profile.heightCm && state.profile.weightKg) {
+      state.profile.onboardedAt = nowIso();
+    }
+    return state;
+  }
+
+  function parseCsv(text) {
+    const rows = [];
+    let row = [];
+    let cell = "";
+    let quoted = false;
+    for (let i = 0; i < text.length; i += 1) {
+      const char = text[i];
+      if (quoted) {
+        if (char === '"' && text[i + 1] === '"') { cell += '"'; i += 1; }
+        else if (char === '"') quoted = false;
+        else cell += char;
+      } else if (char === '"') quoted = true;
+      else if (char === ",") { row.push(cell); cell = ""; }
+      else if (char === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; }
+      else if (char !== "\r") cell += char;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows;
+  }
+
+  function importValueFromText(raw) {
+    const text = String(raw).replace(/^\uFEFF/, "").trim();
+    try {
+      return JSON.parse(text);
+    } catch (err) {
+      const table = parseCsv(text);
+      if (table.length > 1) {
+        const header = table[0].map((name) => name.trim().toLowerCase());
+        const dataIndex = header.indexOf("data");
+        if (dataIndex >= 0) {
+          const stampIndex = header.indexOf("updated_at");
+          const rows = [];
+          for (const line of table.slice(1)) {
+            try {
+              const state = JSON.parse(line[dataIndex]);
+              const item = { data: state };
+              if (stampIndex >= 0 && line[stampIndex]) item.updated_at = line[stampIndex];
+              rows.push(item);
+            } catch { /* linha vazia ou inválida */ }
+          }
+          if (rows.length) return rows.length === 1 ? rows[0] : rows;
+        }
+      }
+      throw err;
+    }
+  }
+
   function importPayloadFrom(raw) {
-    let value = typeof raw === "string" ? JSON.parse(raw) : raw;
-    if (Array.isArray(value)) {
-      if (value.length !== 1) throw new Error("O arquivo tem mais de uma linha. Importe uma conta por vez.");
-      value = value[0];
+    let value = typeof raw === "string" ? importValueFromText(raw) : raw;
+    while (typeof value === "string") value = importValueFromText(value);
+    const rows = Array.isArray(value)
+      ? value
+      : Array.isArray(value?.rows)
+        ? value.rows
+        : Array.isArray(value?.data)
+          ? value.data
+          : Array.isArray(value?.data?.rows)
+            ? value.data.rows
+            : [value];
+    const candidates = [];
+    for (const row of rows) {
+      const state = unwrapImportState(row);
+      if (!state) continue;
+      const stamp = Date.parse(row?.updated_at || row?.updatedAt || state.updatedAt || 0) || 0;
+      const meals = Object.values(state.days).reduce((total, day) => total + (Array.isArray(day?.meals) ? day.meals.length : 0), 0);
+      candidates.push({ state, stamp, size: Object.keys(state.days).length * 1000 + meals });
     }
-    if (value && typeof value.data === "string") value = JSON.parse(value.data);
-    else if (value && value.data && typeof value.data === "object") value = value.data;
-    if (value && value.state && typeof value.state === "object") value = value.state;
-    if (!value || typeof value !== "object" || !value.profile || typeof value.profile !== "object" || !value.days || typeof value.days !== "object") {
-      throw new Error("Não encontrei um backup da Viva com perfil e diário.");
+    if (!candidates.length) {
+      const keys = value && typeof value === "object" ? Object.keys(value).slice(0, 8).join(", ") : "";
+      throw new Error(`Não encontrei um backup da Viva com perfil.${keys ? ` Chaves recebidas: ${keys}.` : ""}`);
     }
-    return migrate(value);
+    candidates.sort((a, b) => (b.stamp - a.stamp) || (b.size - a.size));
+    return { state: candidates[0].state, total: candidates.length };
   }
 
   function importSummary(next) {
@@ -3735,7 +3812,6 @@
 
   function openImport() {
     pendingImport = null;
-    clearTimeout(importTimer);
     $("#import-text").value = "";
     $("#import-file-name").textContent = "Nenhum arquivo selecionado";
     $("#btn-import-confirm").disabled = true;
@@ -3748,10 +3824,9 @@
   }
 
   function reviewImport() {
-    clearTimeout(importTimer);
     const status = $("#import-status");
     const confirm = $("#btn-import-confirm");
-    const raw = $("#import-text").value.trim();
+    const raw = $("#import-text").value.replace(/^\uFEFF/, "").trim();
     pendingImport = null;
     confirm.disabled = true;
     status.dataset.tone = "";
@@ -3760,11 +3835,12 @@
       return;
     }
     try {
-      const next = importPayloadFrom(raw);
-      pendingImport = next;
+      const result = importPayloadFrom(raw);
+      pendingImport = result.state;
       confirm.disabled = false;
       status.dataset.tone = "ok";
-      status.textContent = `Pronto: ${importSummary(next)}.`;
+      const extra = result.total > 1 ? ` Usei a linha mais recente de ${result.total}.` : "";
+      status.textContent = `Pronto: ${importSummary(result.state)}.${extra}`;
     } catch (err) {
       status.textContent = err instanceof SyntaxError ? "JSON inválido. Confira o conteúdo colado." : err.message;
     }
@@ -3798,8 +3874,6 @@
     } catch { /* o backup em arquivo pode ser bloqueado pelo navegador */ }
     state = pendingImport;
     selectedDayKey = ymd();
-    renderAll();
-    showMain();
     if (!await saveNow()) {
       state = previous;
       selectedDayKey = ymd();
@@ -3808,6 +3882,7 @@
       button.disabled = false;
       return;
     }
+    showMain();
     pendingImport = null;
     if (typeof dialog.close === "function") dialog.close();
     toast("Dados antigos importados.");
@@ -3968,10 +4043,8 @@
     $("#btn-import").addEventListener("click", openImport);
     $("#import-file").addEventListener("click", () => $("#import-input").click());
     $("#import-input").addEventListener("change", (event) => readImportFile(event.target.files?.[0]));
-    $("#import-text").addEventListener("input", () => {
-      clearTimeout(importTimer);
-      importTimer = setTimeout(reviewImport, 150);
-    });
+    $("#import-text").addEventListener("input", reviewImport);
+    $("#import-text").addEventListener("paste", () => setTimeout(reviewImport, 0));
     $("#btn-import-confirm").addEventListener("click", applyImport);
     $("#import-cancel").addEventListener("click", () => $("#import-dialog").close());
     $("#btn-delete").addEventListener("click", armDelete);
