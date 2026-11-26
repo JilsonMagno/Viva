@@ -1176,7 +1176,7 @@ await check("8j. botão Reportar envia mensagem e contexto", async () => {
     return current.reports?.length ? current.reports[0] : null;
   });
   equal(report.question, "sardinha", "pergunta enviada");
-  equal(report.version, "2.23.0", "versão enviada");
+  equal(report.version, "2.24.0", "versão enviada");
   equal(report.profile.name, undefined, "nome não deve ir no relatório");
   assert(report.today.meals.length === 1, "refeição deveria ir no contexto");
   await page.close();
@@ -1496,6 +1496,15 @@ await check("16. interface mobile não vaza na horizontal e tem nomes acessívei
     assert(width <= 390, `${view} vaza na horizontal: ${width}`);
   }
   await goView(page, "viva");
+  const chatSize = await page.evaluate(() => {
+    const chat = document.querySelector(".chat-view").getBoundingClientRect();
+    const tabbar = document.querySelector(".tabbar").getBoundingClientRect();
+    const log = document.querySelector(".chat-log").getBoundingClientRect();
+    return { chatBottom: chat.bottom, chatHeight: chat.height, tabbarTop: tabbar.top, logHeight: log.height, innerHeight };
+  });
+  assert(chatSize.chatBottom <= chatSize.tabbarTop - 4, `chat encosta na barra: ${chatSize.chatBottom} > ${chatSize.tabbarTop - 4}`);
+  assert(chatSize.chatHeight >= chatSize.innerHeight - 170, `chat pequeno: ${chatSize.chatHeight}`);
+  assert(chatSize.logHeight >= 360, `histórico do chat pequeno: ${chatSize.logHeight}`);
   await page.focus("#chat-input");
   await new Promise((resolve) => setTimeout(resolve, 120));
   const typing = await page.evaluate(() => {

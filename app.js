@@ -18,7 +18,7 @@
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
-  const APP_VERSION = "2.23.0";
+  const APP_VERSION = "2.24.0";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
