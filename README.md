@@ -43,16 +43,16 @@ Testes:
 - `node tests/report.test.mjs`: 5 verificações do endpoint de relatórios, incluindo JWT, gravação do usuário, limite de contexto e fallback quando a tabela falha.
 - `node tests/food-api.test.mjs`: 11 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g, ausência de dados e recusa de produtos preparados que não correspondem ao alimento pedido.
 - `tests/fixtures/meal-cases.json`: casos de regressão de refeições. Cada caso fixa a mensagem, os itens esperados, as gramas e as kcal totais; a suíte falha se qualquer um mudar.
-- `node tests/e2e.test.mjs`: 58 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, tela de entrada sem formulário de email, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, edição de refeição de dia passado com troca de tipo e adição de alimento, padronização dos nomes, nomes fora da tabela, nome de alimento sozinho, regressão de refeições compostas, preparação que não vira alimento simples, pergunta que não vira refeição, IA interpretando quantidade antes da tabela, correção de refeição pelo histórico, correção com texto solto da IA que usa o parser local, correção sem alimento reconhecível que pede para repetir, resposta vazia da IA que cai no parser local, botão Reportar, fatias de queijo, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 59 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, tela de entrada sem formulário de email, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, edição de refeição de dia passado com troca de tipo e adição de alimento, padronização dos nomes, nomes fora da tabela, nome de alimento sozinho, regressão de refeições compostas, preparação que não vira alimento simples, pergunta que não vira refeição, IA interpretando quantidade antes da tabela, correção de refeição pelo histórico, correção com texto solto da IA que usa o parser local, correção sem alimento reconhecível que pede para repetir, resposta vazia da IA que cai no parser local, botão Reportar, fatias de queijo, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as sete suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 258.321 bytes crus, 65.142 bytes em gzip e 54.138 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 258.950 bytes crus, 65.269 bytes em gzip e 54.332 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato usa um modelo gratuito com visão e um modelo de reserva; é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
 - A interpretação de refeição usa um modelo gratuito de texto/visão (`google/gemma-4-31b-it:free` no OpenRouter) e cai para `google/gemma-4-26b-a4b-it:free` se o primeiro não devolver JSON válido. O parser local só entra quando a IA está desligada ou falha.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.20.0`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.21.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -85,7 +85,7 @@ AUTH_GOOGLE: false
 
 ## Importar dados antigos
 
-Em **Perfil → Seus dados → Importar dados antigos**, dá para recuperar um diário de outra conta ou de um visitante anterior. A janela aceita:
+A opção **Importar dados antigos** aparece na tela de entrada, no primeiro acesso e em **Perfil → Seus dados**. Ela recupera um diário de outra conta ou de um visitante anterior. A janela aceita:
 
 - um arquivo JSON exportado pela Viva;
 - o JSON do campo `data` de uma linha do Supabase;

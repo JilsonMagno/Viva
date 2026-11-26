@@ -453,6 +453,8 @@ img,svg{display:block}
 .report-status[data-tone="ok"]{color:var(--green-2)}
 .import-pick{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .import-pick .fineprint{overflow-wrap:anywhere}
+.auth-import,.onb-import{margin-top:10px;text-align:center}
+.auth-import .link,.onb-import .link{font-size:.85rem}
 @media (min-width:960px){.toast{bottom:24px}}
 .offline-bar{background:rgba(196,105,74,.14);border:1px solid rgba(196,105,74,.3);color:var(--terra);border-radius:14px;padding:9px 13px;font-size:.8rem;font-weight:650;text-align:center}
 </style>
@@ -495,6 +497,7 @@ img,svg{display:block}
       Entrar com Google
     </button>
     <button id="btn-anon" class="btn btn-primary btn-block" type="button">Entrar como visitante</button>
+    <p class="auth-import fineprint">Já tem um backup? <button class="link" id="btn-import-login" type="button">Importar dados antigos</button></p>
     <p id="auth-error" class="fineprint" role="alert" hidden></p>
     <p class="fineprint">No modo visitante, os dados ficam vinculados a este navegador. Você pode exportar ou apagar tudo a qualquer momento. Este app não substitui orientação médica.</p>
   </div>
@@ -541,6 +544,7 @@ img,svg{display:block}
       </div>
       <p class="form-error" id="onb-error" role="alert" hidden></p>
       <button id="onb-submit" class="btn btn-primary btn-block" type="submit">Criar minhas metas</button>
+      <p class="onb-import fineprint">Já tem dados antigos? <button class="link" id="btn-import-onb" type="button">Importar backup</button></p>
       <p class="fineprint">Cálculo de referência (Mifflin-St Jeor, fator de atividade 1,5). Base de alimentos: TACO 4ª ed. (NEPA/UNICAMP) e USDA FoodData Central. Não substitui nutricionista ou médico.</p>
     </form>
   </div>

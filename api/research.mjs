@@ -1,4 +1,4 @@
-const USER_AGENT = "Viva/2.20.0 (+https://viva-rouge-omega.vercel.app)";
+const USER_AGENT = "Viva/2.21.0 (+https://viva-rouge-omega.vercel.app)";
 const CACHE = new Map();
 const CACHE_TTL = 10 * 60 * 1000;
 const MAX_RESULTS = 5;

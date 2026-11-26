@@ -210,7 +210,23 @@ await check("1b. login sem email oferece visitante e Google", async () => {
   assert(!(await page.$eval("#btn-anon", (el) => el.hidden)), "visitante deveria aparecer");
   assert(!(await page.$eval("#btn-google", (el) => el.hidden)), "Google deveria aparecer");
   assert((await textOf(page, "#btn-anon")).includes("Entrar como visitante"), "texto do visitante deveria aparecer");
+  assert(await page.$("#btn-import-login"), "atalho de importação deveria aparecer na entrada");
   await page.close();
+});
+
+await check("1c. importar pela tela de entrada abre o visitante e o importador", async () => {
+  await resetAll();
+  const context = await browser.createBrowserContext();
+  const page = await context.newPage();
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.goto(`${BASE}/?sw=0`, { waitUntil: "domcontentloaded", timeout: 15000 });
+  await page.waitForFunction(() => !document.getElementById("screen-login").hidden, { timeout: 5000 });
+  await page.click("#btn-import-login");
+  await waitOnboarding(page);
+  await page.waitForFunction(() => document.getElementById("import-dialog").open, { timeout: 5000 });
+  assert(await page.$eval("#import-dialog", (element) => element.open), "janela de importação deveria abrir");
+  await page.click("#import-cancel");
+  await context.close();
 });
 
 await check("2. sessão expirada é renovada com refresh token", async () => {
@@ -1134,7 +1150,7 @@ await check("8j. botão Reportar envia mensagem e contexto", async () => {
     return current.reports?.length ? current.reports[0] : null;
   });
   equal(report.question, "sardinha", "pergunta enviada");
-  equal(report.version, "2.20.0", "versão enviada");
+  equal(report.version, "2.21.0", "versão enviada");
   equal(report.profile.name, undefined, "nome não deve ir no relatório");
   assert(report.today.meals.length === 1, "refeição deveria ir no contexto");
   await page.close();
@@ -1483,6 +1499,7 @@ await check("19. login visitante entra e cria dados no Supabase", async () => {
   await page.waitForFunction(() => !document.getElementById("screen-login").hidden, { timeout: 5000 });
   await page.click("#btn-anon");
   await waitOnboarding(page);
+  assert(await page.$("#btn-import-onb"), "atalho de importação deveria aparecer no primeiro acesso");
   await page.type("#onb-name", "Visitante");
   await page.type("#onb-age", "30");
   await page.type("#onb-height", "170");

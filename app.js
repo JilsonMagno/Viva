@@ -18,7 +18,7 @@
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
-  const APP_VERSION = "2.20.0";
+  const APP_VERSION = "2.21.0";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -434,7 +434,7 @@
     location.assign(`${SB}/auth/v1/authorize?${params.toString()}`);
   }
 
-  async function loginAnonymous() {
+  async function loginAnonymous(openImportAfter = false) {
     const button = $("#btn-anon");
     const error = $("#auth-error");
     if (error) error.hidden = true;
@@ -460,6 +460,7 @@
       user = session.user;
       show("boot");
       await enterApp();
+      if (openImportAfter) openImport();
     } catch {
       show("screen-login");
       const message = "Não foi possível entrar. Verifique a conexão.";
@@ -3946,7 +3947,9 @@
   function bind() {
     if (CFG.AUTH_GOOGLE === false) $("#btn-google").hidden = true;
     $("#btn-google").addEventListener("click", startLogin);
-    $("#btn-anon").addEventListener("click", loginAnonymous);
+    $("#btn-anon").addEventListener("click", () => loginAnonymous());
+    $("#btn-import-login")?.addEventListener("click", () => loginAnonymous(true));
+    $("#btn-import-onb")?.addEventListener("click", openImport);
     $("#onb-form").addEventListener("submit", submitOnboarding);
     for (const id of ["onb-age", "onb-height", "onb-weight"]) $("#" + id).addEventListener("input", updateOnboardingPreview);
     for (const radio of $$("input[name=goal]")) radio.addEventListener("change", updateOnboardingPreview);

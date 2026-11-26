@@ -453,6 +453,8 @@ img,svg{display:block}
 .report-status[data-tone="ok"]{color:var(--green-2)}
 .import-pick{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .import-pick .fineprint{overflow-wrap:anywhere}
+.auth-import,.onb-import{margin-top:10px;text-align:center}
+.auth-import .link,.onb-import .link{font-size:.85rem}
 @media (min-width:960px){.toast{bottom:24px}}
 .offline-bar{background:rgba(196,105,74,.14);border:1px solid rgba(196,105,74,.3);color:var(--terra);border-radius:14px;padding:9px 13px;font-size:.8rem;font-weight:650;text-align:center}
 </style>
@@ -495,6 +497,7 @@ img,svg{display:block}
       Entrar com Google
     </button>
     <button id="btn-anon" class="btn btn-primary btn-block" type="button">Entrar como visitante</button>
+    <p class="auth-import fineprint">Já tem um backup? <button class="link" id="btn-import-login" type="button">Importar dados antigos</button></p>
     <p id="auth-error" class="fineprint" role="alert" hidden></p>
     <p class="fineprint">No modo visitante, os dados ficam vinculados a este navegador. Você pode exportar ou apagar tudo a qualquer momento. Este app não substitui orientação médica.</p>
   </div>
@@ -541,6 +544,7 @@ img,svg{display:block}
       </div>
       <p class="form-error" id="onb-error" role="alert" hidden></p>
       <button id="onb-submit" class="btn btn-primary btn-block" type="submit">Criar minhas metas</button>
+      <p class="onb-import fineprint">Já tem dados antigos? <button class="link" id="btn-import-onb" type="button">Importar backup</button></p>
       <p class="fineprint">Cálculo de referência (Mifflin-St Jeor, fator de atividade 1,5). Base de alimentos: TACO 4ª ed. (NEPA/UNICAMP) e USDA FoodData Central. Não substitui nutricionista ou médico.</p>
     </form>
   </div>
@@ -997,7 +1001,7 @@ img,svg{display:block}
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
-  const APP_VERSION = "2.20.0";
+  const APP_VERSION = "2.21.0";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -1413,7 +1417,7 @@ img,svg{display:block}
     location.assign(`${SB}/auth/v1/authorize?${params.toString()}`);
   }
 
-  async function loginAnonymous() {
+  async function loginAnonymous(openImportAfter = false) {
     const button = $("#btn-anon");
     const error = $("#auth-error");
     if (error) error.hidden = true;
@@ -1439,6 +1443,7 @@ img,svg{display:block}
       user = session.user;
       show("boot");
       await enterApp();
+      if (openImportAfter) openImport();
     } catch {
       show("screen-login");
       const message = "Não foi possível entrar. Verifique a conexão.";
@@ -4925,7 +4930,9 @@ img,svg{display:block}
   function bind() {
     if (CFG.AUTH_GOOGLE === false) $("#btn-google").hidden = true;
     $("#btn-google").addEventListener("click", startLogin);
-    $("#btn-anon").addEventListener("click", loginAnonymous);
+    $("#btn-anon").addEventListener("click", () => loginAnonymous());
+    $("#btn-import-login")?.addEventListener("click", () => loginAnonymous(true));
+    $("#btn-import-onb")?.addEventListener("click", openImport);
     $("#onb-form").addEventListener("submit", submitOnboarding);
     for (const id of ["onb-age", "onb-height", "onb-weight"]) $("#" + id).addEventListener("input", updateOnboardingPreview);
     for (const radio of $$("input[name=goal]")) radio.addEventListener("change", updateOnboardingPreview);
