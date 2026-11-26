@@ -11,6 +11,7 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 - Primeiro acesso sem dados de exemplo: você informa idade, altura, peso e objetivo, e a Viva calcula as metas iniciais.
 - Cada conta lê e grava só a própria linha no banco (RLS).
 - Registros pelo assistente (refeições, água, atividade e peso) são salvos na conta.
+- **Edição de dias passados:** na aba Alimentação, a data pode ser trocada pelo seletor, pelas setas ou pelo botão **Hoje**. Ao abrir um dia anterior, dá para editar as gramas, trocar o tipo de refeição (café, almoço, lanche ou jantar), excluir um alimento ou adicionar outro pelo nome. Na Evolução, cada dia do histórico abre direto esse editor.
 - **Refeição com IA primeiro:** quando a IA está ligada, o texto do usuário é interpretado pela IA antes de qualquer busca. Ela separa alimentos, quantidades, unidades e o horário da refeição, usando o histórico do chat para entender continuações e correções. Depois o app confere cada item na tabela local; o que não estiver lá vai para o Open Food Facts. Se a IA falhar, o parser local continua funcionando como reserva.
 - Chat livre com IA: perguntas abertas, texto sem formato de comando e pedidos de pesquisa vão para a IA, não só para respostas programadas. Cada resposta tem o botão **Reportar**, que envia a pergunta, a resposta, o perfil sem nome/e-mail, as refeições do dia e a versão do app. A IA recebe o perfil, as metas, o dia atual, os últimos dias detalhados, o resumo de todo o histórico, o peso e as últimas mensagens. Com a pesquisa ligada, consulta Wikipedia e PubMed (ou Tavily, se configurado) e mostra as fontes. O usuário pode, opcionalmente, salvar a própria chave (OpenAI, Gemini, Groq ou OpenRouter) em Perfil; ela fica só no navegador e tem prioridade. Sem nenhuma chave, o assistente local responde sobre proteína, calorias, água, resumo e sugestão de jantar.
 - Foto do prato: a IA com visão estima alimentos, porções e kcal; o usuário confere e adiciona ao diário. O modelo de visão tem um modelo de reserva quando o primeiro volta vazio.
@@ -27,7 +28,7 @@ Seis abas, iguais às do app original e do protótipo:
 
 - **Início**: resumo de kcal e macros, atalhos, água, peso e hábitos da semana.
 - **Assistente**: conversa livre com IA, pesquisa na web, fontes citadas e registro por texto.
-- **Alimentação** (rótulo curto **Refeições** no celular): refeições agrupadas por café da manhã, almoço, lanche e jantar, com resumo do dia, sugestão e edição de quantidade ou exclusão de cada alimento.
+- **Alimentação** (rótulo curto **Refeições** no celular): refeições agrupadas por café da manhã, almoço, lanche e jantar, com resumo do dia, sugestão e edição de quantidade, tipo, adição ou exclusão de cada alimento. O seletor de data permite editar dias passados.
 - **Atividades**: minutos dos últimos 7 dias, atividades de hoje, registro de treino por músculos/intensidade/duração, simulador de gasto, sugestão de compras por orçamento e registro pelo assistente.
 - **Evolução**: dashboard completo, últimos 14 dias, médias e histórico de peso. O dashboard pode ser impresso ou salvo em PDF.
 - **Perfil**: metas, IA incluída, campo opcional de chave própria, exportação e exclusão.
@@ -42,16 +43,16 @@ Testes:
 - `node tests/report.test.mjs`: 5 verificações do endpoint de relatórios, incluindo JWT, gravação do usuário, limite de contexto e fallback quando a tabela falha.
 - `node tests/food-api.test.mjs`: 11 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g, ausência de dados e recusa de produtos preparados que não correspondem ao alimento pedido.
 - `tests/fixtures/meal-cases.json`: casos de regressão de refeições. Cada caso fixa a mensagem, os itens esperados, as gramas e as kcal totais; a suíte falha se qualquer um mudar.
-- `node tests/e2e.test.mjs`: 59 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, cadastro e login por email, senha incorreta, recuperação de senha, confirmação de email, login sem visitante, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, padronização dos nomes, nomes fora da tabela, nome de alimento sozinho, regressão de refeições compostas, preparação que não vira alimento simples, pergunta que não vira refeição, IA interpretando quantidade antes da tabela, correção de refeição pelo histórico, correção com texto solto da IA que usa o parser local, correção sem alimento reconhecível que pede para repetir, resposta vazia da IA que cai no parser local, botão Reportar, fatias de queijo, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 60 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, cadastro e login por email, senha incorreta, recuperação de senha, confirmação de email, login sem visitante, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, edição de refeição de dia passado com troca de tipo e adição de alimento, padronização dos nomes, nomes fora da tabela, nome de alimento sozinho, regressão de refeições compostas, preparação que não vira alimento simples, pergunta que não vira refeição, IA interpretando quantidade antes da tabela, correção de refeição pelo histórico, correção com texto solto da IA que usa o parser local, correção sem alimento reconhecível que pede para repetir, resposta vazia da IA que cai no parser local, botão Reportar, fatias de queijo, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as sete suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 255.066 bytes crus, 63.942 bytes em gzip e 53.237 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 263.934 bytes crus, 65.982 bytes em gzip e 54.857 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato usa um modelo gratuito com visão e um modelo de reserva; é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
 - A interpretação de refeição usa um modelo gratuito de texto/visão (`google/gemma-4-31b-it:free` no OpenRouter) e cai para `google/gemma-4-26b-a4b-it:free` se o primeiro não devolver JSON válido. O parser local só entra quando a IA está desligada ou falha.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.17.0`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.18.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -178,13 +179,15 @@ Refeições com vários itens reconhecem plurais, alimentos compostos e quantida
 
 ## Editar refeição
 
-Na aba **Alimentação**, cada refeição tem um botão de edição (lápis). Ele abre um painel com todos os alimentos da refeição. Em cada alimento, você pode:
+Na aba **Alimentação**, use o seletor de data, as setas ou o botão **Hoje** para escolher o dia. Ao abrir um dia passado, o título muda para “Refeições de ontem” (ou a data) e o botão **+ Anotar** fica oculto, para não lançar uma refeição no dia errado. Cada refeição tem um botão de edição (lápis) que abre um painel com todos os alimentos. Nele, você pode:
 
 - alterar a quantidade em gramas;
+- trocar o tipo da refeição entre café da manhã, almoço, lanche e jantar;
 - excluir apenas aquele alimento;
+- adicionar outro alimento digitando o nome e a porção, por exemplo “1 fatia de queijo minas”;
 - salvar as alterações ou cancelar.
 
-As calorias e os macros da refeição são recalculados na hora. Se todos os alimentos forem excluídos, a refeição também sai do diário. A alteração fica no mesmo JSON do dia; não precisa de migração.
+As calorias e os macros da refeição são recalculados na hora. Se todos os alimentos forem excluídos, a refeição também sai do diário. A alteração fica no mesmo JSON do dia; não precisa de migração. Na aba **Evolução**, cada linha do histórico de 14 dias também abre o dia correspondente na Alimentação.
 
 ## Compras com orçamento
 

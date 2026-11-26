@@ -274,10 +274,23 @@ img,svg{display:block}
 .row .r-del:hover{color:var(--danger);background:var(--surface-2)}
 .row .r-edit{border:0;background:none;color:var(--muted);padding:6px;border-radius:8px;line-height:1;font-size:.95rem}
 .row .r-edit:hover{color:var(--green-2);background:var(--surface-2)}
+.meal-daybar{display:flex;align-items:center;gap:6px;margin:10px 0 2px;flex-wrap:wrap}
+.day-arrow{width:34px;height:34px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink-2);font-size:1.2rem;line-height:1;display:grid;place-items:center}
+.day-arrow:hover:not(:disabled){border-color:var(--green-3);color:var(--green-2)}
+.day-arrow:disabled{opacity:.35}
+.day-input{min-height:34px;padding:5px 8px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;font-size:.8rem;font-weight:650}
+.meal-daybar .link{margin-left:auto}
+.meal-daybar .link:disabled{opacity:.4;cursor:default}
 .meal-edit{margin:2px 0 14px;padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--surface-2);display:grid;gap:10px}
-.meal-edit-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.meal-edit-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .meal-edit-head strong{font-size:.9rem}
-.meal-edit-head .sub{font-size:.72rem;color:var(--muted)}
+.meal-edit > .sub{font-size:.72rem;color:var(--muted);margin-top:-4px}
+.meal-label-field{display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--muted);font-weight:650}
+.meal-label-select{min-height:32px;padding:5px 7px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font:inherit;font-size:.78rem;font-weight:650}
+.meal-add{display:flex;gap:8px;align-items:center;margin-top:2px}
+.meal-add-input{flex:1;min-width:0;min-height:36px;padding:7px 9px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;font-size:.8rem}
+.meal-add-input:focus{outline:2px solid rgba(47,138,87,.25);border-color:var(--green-3)}
+.meal-add .btn{flex:none}
 .meal-edit-list{list-style:none;margin:0;padding:0;display:grid;gap:9px}
 .meal-edit-item{padding-bottom:9px;border-bottom:1px solid var(--line);display:grid;gap:6px}
 .meal-edit-item:last-child{border-bottom:0;padding-bottom:0}
@@ -379,7 +392,7 @@ img,svg{display:block}
 .chat-search input{width:16px;height:16px;accent-color:var(--green-2)}
 .msg{white-space:pre-wrap;overflow-wrap:anywhere}
 @media (max-width:959px){
-  .chat-form textarea{font-size:16px}
+  .chat-form textarea,.meal-add-input,.day-input,.meal-label-select{font-size:16px}
   body.chat-typing{overflow:hidden;overscroll-behavior:none}
   body.chat-typing .topbar,
   body.chat-typing .tabbar,
@@ -407,6 +420,10 @@ img,svg{display:block}
 .day .d-meta{grid-column:2/-1;display:flex;gap:10px;font-size:.7rem;color:var(--muted);margin-top:-6px}
 .day .d-meta span{display:inline-flex;align-items:center;gap:4px}
 .day .d-meta svg{width:13px;height:13px}
+.day[data-open-day]{cursor:pointer;border-radius:12px;transition:background .15s ease}
+.day[data-open-day]:hover,.day[data-open-day]:focus-visible{background:var(--surface-2);outline:none}
+.day[data-open-day]:focus-visible{box-shadow:inset 0 0 0 2px var(--green-3)}
+.d-open{margin-left:auto;color:var(--green-2);font-weight:700}
 /* perfil */
 .profile-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 @media (min-width:860px){.profile-grid{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);align-items:start}}
@@ -661,14 +678,21 @@ img,svg{display:block}
         </div>
       </section>
       <section id="view-alimentacao" class="view" data-view-panel="alimentacao" hidden>
-        <div class="greet"><span class="eyebrow">Alimentação</span><h1>O que você comeu hoje.</h1></div>
+        <div class="greet"><span class="eyebrow">Alimentação</span><h1 id="meals-heading">O que você comeu hoje.</h1></div>
         <div class="cols">
           <div class="stack">
             <article class="card" aria-labelledby="meals-title">
               <header class="card-head">
                 <h2 id="meals-title">Refeições de hoje</h2>
-                <button class="link" type="button" data-focus-chat>+ Anotar</button>
+                <button class="link" id="btn-meal-add" type="button" data-focus-chat>+ Anotar</button>
               </header>
+              <div class="meal-daybar">
+                <button class="day-arrow" id="meal-prev-day" type="button" aria-label="Dia anterior">‹</button>
+                <input class="day-input" id="meal-date" type="date" aria-label="Dia das refeições">
+                <button class="day-arrow" id="meal-next-day" type="button" aria-label="Próximo dia">›</button>
+                <button class="link" id="meal-today" type="button">Hoje</button>
+              </div>
+              <p class="targets-note" id="meal-day-note" hidden></p>
               <div id="meal-list"></div>
             </article>
           </div>
@@ -678,14 +702,14 @@ img,svg{display:block}
               <p class="targets-note" id="meal-summary">Nenhuma refeição anotada ainda.</p>
             </article>
             <article class="card">
-              <header class="card-head"><h2>Anotar ou pedir ideia</h2></header>
-              <p class="targets-note">A Viva entende texto livre: “comi 2 ovos e um pão”.</p>
+              <header class="card-head"><h2 id="meal-action-title">Anotar ou pedir ideia</h2></header>
+              <p class="targets-note" id="meal-action-note">A Viva entende texto livre: “comi 2 ovos e um pão”.</p>
               <div style="display:grid;gap:8px;margin-top:12px">
-                <button class="btn btn-primary btn-block" type="button" data-focus-chat>Anotar refeição</button>
+                <button class="btn btn-primary btn-block" id="btn-meal-note" type="button" data-focus-chat>Anotar refeição</button>
                 <button class="btn btn-subtle btn-block" type="button" data-chat-prompt="O que posso jantar?">Pedir sugestão</button>
               </div>
             </article>
-            <article class="card" aria-labelledby="photo-title">
+            <article class="card" id="photo-card" aria-labelledby="photo-title">
               <header class="card-head"><h2 id="photo-title">Calcular por foto</h2><span class="sub" id="photo-status">—</span></header>
               <p class="targets-note">Tire ou escolha uma foto do prato. A IA estima os alimentos e as kcal; você confirma antes de salvar.</p>
               <input id="photo-input" type="file" accept="image/*" capture="environment" hidden>

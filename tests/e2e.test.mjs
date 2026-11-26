@@ -596,6 +596,85 @@ await check("4j. edita quantidade e exclui alimento da refeição", async () => 
   await page.close();
 });
 
+await check("4k. edita refeição de um dia passado", async () => {
+  await resetAll();
+  const yesterday = ymd(new Date(Date.now() - 86400000));
+  const base = demoState({ days: {} });
+  base.days[yesterday] = {
+    meals: [{
+      id: "meal-yesterday",
+      at: new Date(Date.now() - 86400000 + 12 * 3600000).toISOString(),
+      label: "Almoço",
+      items: [
+        { foodId: "arroz-branco", name: "Arroz branco cozido", grams: 100, kcal: 128.3, p: 2.5, c: 28.1, f: 0.2 },
+        { foodId: "feijao-carioca", name: "Feijão carioca cozido", grams: 100, kcal: 76.4, p: 4.8, c: 13.6, f: 0.5 }
+      ],
+      kcal: 205,
+      p: 7.3,
+      c: 41.7,
+      f: 0.7
+    }],
+    waterMl: 0,
+    activities: [],
+    weightKg: null
+  };
+  await seed(base);
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await goView(page, "alimentacao");
+
+  await page.$eval("#meal-date", (el, key) => {
+    el.value = key;
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }, yesterday);
+  await page.waitForFunction((key) => document.querySelector("#meal-date").value === key, {}, yesterday);
+  assert((await textOf(page, "#meals-title")).includes("ontem"), "título deveria indicar ontem");
+  assert((await textOf(page, "#meal-list")).includes("Arroz branco cozido"), "refeição de ontem deveria aparecer");
+
+  await page.$eval("[data-edit-meal]", (el) => el.click());
+  await page.waitForSelector(".meal-edit");
+  await page.$eval('[data-meal-item-grams="0"]', (el) => { el.value = "150"; });
+  await page.$eval("[data-meal-edit]", (form) => form.requestSubmit());
+  const edited = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    const meal = current?.data.days[yesterday]?.meals?.[0];
+    return meal?.items?.[0]?.grams === 150 ? meal : null;
+  });
+  equal(edited.items[0].grams, 150, "gramas editadas no dia passado");
+  equal(edited.items.length, 2, "edição não deveria afetar os outros itens");
+
+  await page.$eval("[data-edit-meal]", (el) => el.click());
+  await page.waitForSelector(".meal-edit");
+  await page.type("[data-meal-add-input]", "1 fatia de queijo minas");
+  await page.$eval("[data-meal-add]", (el) => el.click());
+  const added = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    const meal = current?.data.days[yesterday]?.meals?.[0];
+    return meal?.items?.some((item) => item.name === "Queijo minas") ? meal : null;
+  });
+  equal(added.items.length, 3, "alimento adicionado ao dia passado");
+
+  await page.$eval("[data-meal-label]", (el) => { el.value = "Jantar"; });
+  await page.$eval("[data-meal-edit]", (form) => form.requestSubmit());
+  const relabeled = await waitFor(async () => {
+    const current = await rowFor(USER_A.id);
+    const meal = current?.data.days[yesterday]?.meals?.[0];
+    return meal?.label === "Jantar" ? meal : null;
+  });
+  equal(relabeled.label, "Jantar", "refeição renomeada");
+  const current = await rowFor(USER_A.id);
+  equal((current?.data.days[today()]?.meals || []).length, 0, "edição não deveria criar refeição em hoje");
+
+  await goView(page, "diario");
+  await page.$eval(`[data-open-day="${yesterday}"]`, (el) => el.click());
+  await page.waitForFunction((key) => document.querySelector("#meal-date").value === key, {}, yesterday);
+  assert((await textOf(page, "#meals-title")).includes("ontem"), "diário deveria abrir o dia passado");
+  await page.click("#meal-today");
+  await page.waitForFunction(() => document.querySelector("#meal-date").value === new Date().toISOString().slice(0, 10));
+  await page.close();
+});
+
 await check("4e. sem dados públicos, não inventa valores", async () => {
   await resetAll();
   await setConfig({ foodMode: "notfound" });
@@ -1150,7 +1229,7 @@ await check("8j. botão Reportar envia mensagem e contexto", async () => {
     return current.reports?.length ? current.reports[0] : null;
   });
   equal(report.question, "sardinha", "pergunta enviada");
-  equal(report.version, "2.17.0", "versão enviada");
+  equal(report.version, "2.18.0", "versão enviada");
   equal(report.profile.name, undefined, "nome não deve ir no relatório");
   assert(report.today.meals.length === 1, "refeição deveria ir no contexto");
   await page.close();

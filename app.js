@@ -18,7 +18,7 @@
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
-  const APP_VERSION = "2.17.0";
+  const APP_VERSION = "2.18.0";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -184,6 +184,7 @@
   let chatBusy = false;
   let deleteArmed = 0;
   let editingMealId = null;
+  let selectedDayKey = ymd();
   let authMode = "login";
   let installPrompt = null;
   const waterUndo = [];
@@ -874,8 +875,12 @@
     return state.days[key];
   }
 
+  function daySnapshot(key = ymd()) {
+    return state?.days?.[key] || emptyDay();
+  }
+
   function dayTotals(key = ymd()) {
-    const d = dayData(key);
+    const d = daySnapshot(key);
     const totals = { kcal: 0, protein: 0, carbs: 0, fat: 0, burned: 0 };
     for (const meal of d.meals) {
       totals.kcal += Number(meal.kcal) || 0;
@@ -2934,13 +2939,15 @@
       editingMealId = null;
       return;
     }
+    const label = form.querySelector("[data-meal-label]")?.value;
+    if (label) meal.label = label;
     meal.items = items;
     recalcMeal(meal);
     editingMealId = null;
     queueSave();
     renderToday();
     renderDiary();
-    toast("Quantidades atualizadas.");
+    toast("Refeição atualizada.");
   }
 
   function deleteMealItem(meal, form, index) {
@@ -2962,10 +2969,16 @@
 
   function mealEditor(meal) {
     const form = h("form", { class: "meal-edit", dataset: { mealEdit: meal.id }, "aria-label": `Editar ${meal.label}` });
+    const labels = [...new Set(["Café da manhã", "Almoço", "Lanche", "Jantar", meal.label])];
+    const labelSelect = h("select", { class: "meal-label-select", "data-meal-label": "", "aria-label": "Refeição" },
+      labels.map((label) => h("option", { value: label }, label))
+    );
+    labelSelect.value = meal.label;
     form.append(h("div", { class: "meal-edit-head" },
-      h("strong", {}, `Editar ${meal.label}`),
-      h("span", { class: "sub" }, "Quantidades em gramas")
+      h("strong", {}, "Editar refeição"),
+      h("label", { class: "meal-label-field" }, "Refeição", labelSelect)
     ));
+    form.append(h("span", { class: "sub" }, "Ajuste as quantidades, o tipo de refeição ou adicione um alimento."));
     const list = h("ul", { class: "meal-edit-list" });
     meal.items.forEach((item, index) => {
       const kcal = h("span", { class: "e-kcal" }, `${nf(item.kcal)} kcal`);
@@ -3000,6 +3013,50 @@
       ));
     });
     form.append(list);
+    const addInput = h("input", {
+      type: "text",
+      class: "meal-add-input",
+      placeholder: "Ex.: 1 fatia de queijo minas",
+      "aria-label": "Adicionar alimento à refeição",
+      "data-meal-add-input": ""
+    });
+    const addButton = h("button", { class: "btn btn-subtle btn-sm", type: "button", "data-meal-add": "" }, "Adicionar");
+    const addItem = async () => {
+      const text = addInput.value.trim();
+      if (!text || addButton.disabled) return;
+      addButton.disabled = true;
+      addButton.textContent = "Adicionando…";
+      try {
+        const parsed = await parseMeal(text);
+        if (!parsed?.items?.length) {
+          toast(parsed?.unknown?.length
+            ? `Não encontrei ${parsed.unknown.map((name) => `“${name}”`).join(", ")}.`
+            : "Não consegui interpretar esse alimento.");
+          return;
+        }
+        meal.items.push(...parsed.items);
+        recalcMeal(meal);
+        queueSave();
+        renderToday();
+        renderDiary();
+        toast(parsed.unknown.length
+          ? `Adicionado. Não encontrei ${parsed.unknown.map((name) => `“${name}”`).join(", ")}.`
+          : "Alimento adicionado.");
+      } catch {
+        toast("Não consegui adicionar agora. Tente de novo.");
+      } finally {
+        addButton.disabled = false;
+        addButton.textContent = "Adicionar";
+      }
+    };
+    addButton.addEventListener("click", addItem);
+    addInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        addItem();
+      }
+    });
+    form.append(h("div", { class: "meal-add" }, addInput, addButton));
     form.append(h("div", { class: "meal-edit-actions" },
       h("button", { class: "btn btn-primary btn-sm", type: "submit" }, "Salvar"),
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { editingMealId = null; renderToday(); } }, "Cancelar")
@@ -3009,6 +3066,31 @@
       saveMealEdit(meal, form);
     });
     return form;
+  }
+
+  function clampDayKey(key) {
+    const today = ymd();
+    const value = /^\d{4}-\d{2}-\d{2}$/.test(String(key || "")) ? String(key) : today;
+    return value > today ? today : value;
+  }
+
+  function selectedDayLabel() {
+    const today = ymd();
+    if (selectedDayKey === today) return "hoje";
+    if (selectedDayKey === ymd(addDays(new Date(), -1))) return "ontem";
+    return parseYmd(selectedDayKey).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  }
+
+  function setSelectedDay(key) {
+    selectedDayKey = clampDayKey(key);
+    editingMealId = null;
+    renderToday();
+  }
+
+  function openDay(key) {
+    selectedDayKey = clampDayKey(key);
+    editingMealId = null;
+    setView("alimentacao");
   }
 
   function renderToday() {
@@ -3046,11 +3128,51 @@
       if (label) label.textContent = `${round(value)} / ${round(goal)} ${unit}`;
     }
 
-    const meals = dayData().meals;
+    const isToday = selectedDayKey === ymd();
+    const selected = daySnapshot(selectedDayKey);
+    const selectedTotals = dayTotals(selectedDayKey);
+    const selectedConsumed = round(selectedTotals.kcal);
+    const selectedBurned = round(selectedTotals.burned);
+    const selectedBudget = target.kcal + Math.round(selectedBurned * 0.5);
+    const meals = Array.isArray(selected.meals) ? selected.meals : [];
+    const title = $("#meals-title");
+    if (title) title.textContent = `Refeições de ${selectedDayLabel()}`;
+    const heading = $("#meals-heading");
+    if (heading) heading.textContent = isToday
+      ? "O que você comeu hoje."
+      : `O que você comeu ${selectedDayLabel() === "ontem" ? "ontem" : `em ${selectedDayLabel()}`}.`;
+    const actionTitle = $("#meal-action-title");
+    if (actionTitle) actionTitle.textContent = isToday ? "Anotar ou pedir ideia" : "Pedir ideia";
+    const actionNote = $("#meal-action-note");
+    if (actionNote) actionNote.textContent = isToday
+      ? "A Viva entende texto livre: “comi 2 ovos e um pão”."
+      : "Você está em um dia passado. Edite a refeição pelo lápis; novas anotações pelo assistente valem para hoje.";
+    const mealNoteButton = $("#btn-meal-note");
+    if (mealNoteButton) mealNoteButton.hidden = !isToday;
+    const photoCard = $("#photo-card");
+    if (photoCard) photoCard.hidden = !isToday;
+    const dateInput = $("#meal-date");
+    if (dateInput) {
+      dateInput.value = selectedDayKey;
+      dateInput.max = ymd();
+    }
+    const nextDay = $("#meal-next-day");
+    if (nextDay) nextDay.disabled = isToday;
+    const todayButton = $("#meal-today");
+    if (todayButton) todayButton.disabled = isToday;
+    const addButton = $("#btn-meal-add");
+    if (addButton) addButton.hidden = !isToday;
+    const dayNote = $("#meal-day-note");
+    if (dayNote) {
+      dayNote.hidden = isToday;
+      dayNote.textContent = "Você está editando um dia passado. As alterações são salvas na sua conta.";
+    }
     const mealList = $("#meal-list");
     mealList.innerHTML = "";
     if (!meals.length) {
-      mealList.append(emptyBlock("Nada anotado ainda.", "Diga à Viva: “comi 2 ovos e um pão”."));
+      mealList.append(isToday
+        ? emptyBlock("Nada anotado ainda.", "Diga à Viva: “comi 2 ovos e um pão”.")
+        : emptyBlock("Nada anotado neste dia.", "Escolha outro dia ou volte para hoje para anotar."));
     } else {
       const order = ["Café da manhã", "Almoço", "Lanche", "Jantar"];
       const labels = [...new Set([...order, ...meals.map((meal) => meal.label)])];
@@ -3089,11 +3211,11 @@
       }
     }
     const mealTotal = $("#meal-total");
-    if (mealTotal) mealTotal.textContent = `${nf(consumed)} kcal`;
+    if (mealTotal) mealTotal.textContent = `${nf(selectedConsumed)} kcal`;
     const mealSummary = $("#meal-summary");
     if (mealSummary) mealSummary.textContent = meals.length
-      ? `${nf(consumed)} de ${nf(budget)} kcal · ${nf(burned)} kcal em movimento`
-      : "Nenhuma refeição anotada ainda.";
+      ? `${nf(selectedConsumed)} de ${nf(selectedBudget)} kcal · ${nf(selectedBurned)} kcal em movimento`
+      : (isToday ? "Nenhuma refeição anotada ainda." : "Nenhuma refeição anotada neste dia.");
 
     const water = Number(dayData().waterMl) || 0;
     const waterTarget = target.waterMl || 2000;
@@ -3388,7 +3510,13 @@
       const hasData = !!(item.data && (item.data.meals.length || item.data.waterMl > 0 || item.data.activities.length));
       list.append(h(
         "div",
-        { class: "day" },
+        {
+          class: "day",
+          dataset: { openDay: item.key },
+          role: "button",
+          tabindex: "0",
+          "aria-label": `Abrir refeições de ${item.date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`
+        },
         h("span", { class: "d-date" }, item.date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), h("small", {}, weekday)),
         h("div", { class: "d-bar", role: "img", "aria-label": `${nf(totals.kcal)} de ${nf(target.kcal)} kcal` }, h("i", { style: `width:${pct.toFixed(1)}%` })),
         h("span", { class: "d-kcal" }, totals.kcal ? `${nf(totals.kcal)} kcal` : "—"),
@@ -3398,7 +3526,8 @@
                 h("span", {}, icon("drop"), `${nf(item.data.waterMl)} ml`),
                 h("span", {}, icon("run"), `${nf(totals.burned)} kcal`)
               ]
-            : h("span", {}, "sem registros")
+            : h("span", {}, "sem registros"),
+          h("span", { class: "d-open" }, "Editar")
         )
       ));
     }
@@ -3834,7 +3963,8 @@
   }
 
   function removeMeal(id) {
-    const d = dayData();
+    const d = state.days[selectedDayKey];
+    if (!d) return;
     const index = d.meals.findIndex((meal) => meal.id === id);
     if (index < 0) return;
     d.meals.splice(index, 1);
@@ -4042,6 +4172,28 @@
       const button = event.target.closest("[data-del-meal]");
       if (button) removeMeal(button.dataset.delMeal);
     });
+    $("#meal-prev-day")?.addEventListener("click", () => {
+      setSelectedDay(ymd(addDays(parseYmd(selectedDayKey), -1)));
+    });
+    $("#meal-next-day")?.addEventListener("click", () => {
+      setSelectedDay(ymd(addDays(parseYmd(selectedDayKey), 1)));
+    });
+    $("#meal-date")?.addEventListener("change", (event) => {
+      setSelectedDay(event.target.value);
+    });
+    $("#meal-today")?.addEventListener("click", () => setSelectedDay(ymd()));
+    const diaryDays = $("#diary-days-list");
+    if (diaryDays) {
+      const openDiaryDay = (event) => {
+        const row = event.target.closest("[data-open-day]");
+        if (!row) return;
+        if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
+        event.preventDefault();
+        openDay(row.dataset.openDay);
+      };
+      diaryDays.addEventListener("click", openDiaryDay);
+      diaryDays.addEventListener("keydown", openDiaryDay);
+    }
     $("#activity-list").addEventListener("click", (event) => {
       const button = event.target.closest("[data-del-activity]");
       if (button) removeActivity(button.dataset.delActivity);
