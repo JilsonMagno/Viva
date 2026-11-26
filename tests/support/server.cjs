@@ -218,7 +218,7 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === "/config.js") {
     res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-store" });
-    res.end(`window.VIVA_CONFIG = { SUPABASE_URL: "/sb", SUPABASE_ANON_KEY: "test-anon", AI_FUNCTION: "assistente", AI_ENDPOINT: ${JSON.stringify(state.aiEndpoint)}, AUTH_VISITOR: true };`);
+    res.end(`window.VIVA_CONFIG = { SUPABASE_URL: "/sb", SUPABASE_ANON_KEY: "test-anon", AI_FUNCTION: "assistente", AI_ENDPOINT: ${JSON.stringify(state.aiEndpoint)} };`);
     return;
   }
 

@@ -200,112 +200,17 @@ await check("1. login Google usa PKCE e cria sessão sem senha", async () => {
   await page.close();
 });
 
-await check("1b. cadastro e login por email validam a senha", async () => {
+await check("1b. login sem email oferece visitante e Google", async () => {
   await resetAll();
-  const context = await browser.createBrowserContext();
-  const page = await context.newPage();
-  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
-  page.on("pageerror", (error) => pageErrors.push(error.message));
-  await page.goto(`${BASE}/?sw=0`, { waitUntil: "networkidle0" });
+  const page = await newPage();
+  await page.goto(`${BASE}/?sw=0`, { waitUntil: "domcontentloaded", timeout: 15000 });
   await page.waitForFunction(() => !document.getElementById("screen-login").hidden, { timeout: 5000 });
-  await page.click("#btn-signup");
-  await page.type("#auth-email", "nova@example.com");
-  await page.type("#auth-password", "senha1234");
-  await page.click("#btn-email");
-  await waitOnboarding(page);
-  await page.type("#onb-name", "Nova");
-  await page.type("#onb-age", "28");
-  await page.type("#onb-height", "165");
-  await page.type("#onb-weight", "60");
-  await page.click("#onb-submit");
-  await waitMain(page);
-  let state = await getState();
-  assert(state.emailUsers.includes("nova@example.com"), "conta de email não foi criada");
-  equal(state.rows.length, 1, "deveria existir uma linha para a conta de email");
-  equal(state.rows[0].data.profile.name, "Nova", "nome salvo pela conta de email");
-
-  await goView(page, "perfil");
-  await page.click("#btn-logout");
-  await page.waitForFunction(() => !document.getElementById("screen-login").hidden, { timeout: 5000 });
-  await page.type("#auth-email", "nova@example.com");
-  await page.type("#auth-password", "errada123");
-  await page.click("#btn-email");
-  await page.waitForFunction(() => !document.getElementById("auth-error").hidden, { timeout: 5000 });
-  assert((await textOf(page, "#auth-error")).includes("incorretos"), "senha errada deveria ser recusada");
-  assert(!(await page.$eval("#screen-login", (el) => el.hidden)), "deveria continuar no login");
-
-  await page.click("#auth-password", { clickCount: 3 });
-  await page.type("#auth-password", "senha1234");
-  await page.click("#btn-email");
-  await waitMain(page);
-  assert((await textOf(page, "#greet-title")).includes("Nova"), "login por email deveria carregar a conta");
-  state = await getState();
-  assert(state.tokenGrants.includes("password"), "login por senha não chamou o Supabase");
-  await context.close();
-});
-
-await check("1c. recuperação de senha envia email sem revelar a conta", async () => {
-  await resetAll();
-  const context = await browser.createBrowserContext();
-  const page = await context.newPage();
-  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
-  page.on("pageerror", (error) => pageErrors.push(error.message));
-  await page.goto(`${BASE}/?sw=0`, { waitUntil: "networkidle0" });
-  await page.waitForFunction(() => !document.getElementById("screen-login").hidden, { timeout: 5000 });
-  await page.click("#btn-recover");
-  await page.type("#auth-email", "alguem@example.com");
-  await page.click("#btn-email");
-  await page.waitForFunction(() => !document.getElementById("auth-note").hidden, { timeout: 5000 });
-  assert((await textOf(page, "#auth-note")).includes("Se este email existir"), "mensagem deveria ser genérica");
-  const state = await getState();
-  equal(state.recoveries.length, 1, "pedido de recuperação não chegou ao servidor");
-  equal(state.recoveries[0].email, "alguem@example.com", "email de recuperação");
-  assert(state.recoveries[0].code_challenge, "recuperação deveria usar PKCE");
-  await context.close();
-});
-
-await check("1d. cadastro com confirmação de email pede confirmação antes de entrar", async () => {
-  await resetAll();
-  await setConfig({ emailConfirm: true });
-  const context = await browser.createBrowserContext();
-  const page = await context.newPage();
-  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
-  page.on("pageerror", (error) => pageErrors.push(error.message));
-  await page.goto(`${BASE}/?sw=0`, { waitUntil: "networkidle0" });
-  await page.waitForFunction(() => !document.getElementById("screen-login").hidden, { timeout: 5000 });
-  await page.click("#btn-signup");
-  await page.type("#auth-email", "confirma@example.com");
-  await page.type("#auth-password", "senha1234");
-  await page.click("#btn-email");
-  await page.waitForFunction(() => !document.getElementById("auth-note").hidden, { timeout: 5000 });
-  assert((await textOf(page, "#auth-note")).includes("Confirme seu email"), "deveria pedir confirmação");
-  equal(await page.evaluate(() => localStorage.getItem("viva.session.v2")), null, "não deveria criar sessão sem confirmar");
-  assert(!(await page.$eval("#screen-login", (el) => el.hidden)), "deveria voltar ao login");
-  await context.close();
-});
-
-await check("1e. sem visitante e sem Google, o login por email fica como único caminho", async () => {
-  const context = await browser.createBrowserContext();
-  const page = await context.newPage();
-  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
-  await page.setRequestInterception(true);
-  page.on("request", (request) => {
-    if (request.url().endsWith("/config.js")) {
-      request.respond({
-        status: 200,
-        contentType: "application/javascript",
-        body: 'window.VIVA_CONFIG={SUPABASE_URL:"/sb",SUPABASE_ANON_KEY:"test-anon",AI_ENDPOINT:"/api/ai",AUTH_GOOGLE:false,AUTH_VISITOR:false};'
-      });
-    } else {
-      request.continue();
-    }
-  });
-  await page.goto(`${BASE}/?sw=0`, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => !document.getElementById("screen-login").hidden, { timeout: 5000 });
-  assert(await page.$eval("#btn-anon", (el) => el.hidden), "visitante deveria ficar oculto");
-  assert(await page.$eval("#btn-google", (el) => el.hidden), "Google desligado deveria ficar oculto");
-  assert(!(await page.$eval("#auth-form", (el) => el.hidden)), "formulário de email deveria aparecer");
-  await context.close();
+  equal(await page.$("#auth-form"), null, "não deveria existir formulário de email");
+  equal(await page.$("#auth-email"), null, "não deveria existir campo de email");
+  assert(!(await page.$eval("#btn-anon", (el) => el.hidden)), "visitante deveria aparecer");
+  assert(!(await page.$eval("#btn-google", (el) => el.hidden)), "Google deveria aparecer");
+  assert((await textOf(page, "#btn-anon")).includes("Entrar como visitante"), "texto do visitante deveria aparecer");
+  await page.close();
 });
 
 await check("2. sessão expirada é renovada com refresh token", async () => {
@@ -1229,7 +1134,7 @@ await check("8j. botão Reportar envia mensagem e contexto", async () => {
     return current.reports?.length ? current.reports[0] : null;
   });
   equal(report.question, "sardinha", "pergunta enviada");
-  equal(report.version, "2.18.0", "versão enviada");
+  equal(report.version, "2.19.0", "versão enviada");
   equal(report.profile.name, undefined, "nome não deve ir no relatório");
   assert(report.today.meals.length === 1, "refeição deveria ir no contexto");
   await page.close();

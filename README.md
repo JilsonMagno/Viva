@@ -1,13 +1,13 @@
 # Viva: assistente pessoal de saúde (Fase 2)
 
-Versão com login por email, dados privados por conta, IA incluída no app e opção de o usuário usar a própria chave.
-Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `index.template.html`) + Supabase (login por email e Google opcional, Postgres com RLS) + Vercel (hosting e proxy `/api/ai`).
+Versão com entrada por visitante ou Google, dados privados por conta, IA incluída no app e opção de o usuário usar a própria chave.
+Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `index.template.html`) + Supabase (visitante e Google opcional, Postgres com RLS) + Vercel (hosting e proxy `/api/ai`).
 
 ## O que já está pronto e testado
 
-- Login por email e senha pelo Supabase, com cadastro, confirmação de email, recuperação de senha e alteração de senha em Perfil. A senha tem mínimo de 8 caracteres e nunca é guardada pelo app.
-- Login com Google pelo Supabase (PKCE), opcional e desligado por padrão, com renovação automática da sessão.
-- Login visitante (anônimo) desativado por padrão. Para demonstração ou testes, ligue `AUTH_VISITOR: true` em `config.js`; em produção cada pessoa entra com email ou Google.
+- **Entrada sem email:** o botão **Entrar como visitante** cria uma sessão anônima no Supabase e abre o app direto. Não há cadastro, senha, confirmação de email nem recuperação de senha.
+- Login com Google pelo Supabase (PKCE), opcional e desligado por padrão, para quem quiser uma conta identificável. A sessão é renovada automaticamente.
+- O modo visitante depende de **Anonymous sign-ins** ligado no painel do Supabase. Os dados ficam vinculados àquela sessão anônima; exportar ou apagar tudo continua disponível em Perfil.
 - Primeiro acesso sem dados de exemplo: você informa idade, altura, peso e objetivo, e a Viva calcula as metas iniciais.
 - Cada conta lê e grava só a própria linha no banco (RLS).
 - Registros pelo assistente (refeições, água, atividade e peso) são salvos na conta.
@@ -43,47 +43,44 @@ Testes:
 - `node tests/report.test.mjs`: 5 verificações do endpoint de relatórios, incluindo JWT, gravação do usuário, limite de contexto e fallback quando a tabela falha.
 - `node tests/food-api.test.mjs`: 11 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g, ausência de dados e recusa de produtos preparados que não correspondem ao alimento pedido.
 - `tests/fixtures/meal-cases.json`: casos de regressão de refeições. Cada caso fixa a mensagem, os itens esperados, as gramas e as kcal totais; a suíte falha se qualquer um mudar.
-- `node tests/e2e.test.mjs`: 60 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, cadastro e login por email, senha incorreta, recuperação de senha, confirmação de email, login sem visitante, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, edição de refeição de dia passado com troca de tipo e adição de alimento, padronização dos nomes, nomes fora da tabela, nome de alimento sozinho, regressão de refeições compostas, preparação que não vira alimento simples, pergunta que não vira refeição, IA interpretando quantidade antes da tabela, correção de refeição pelo histórico, correção com texto solto da IA que usa o parser local, correção sem alimento reconhecível que pede para repetir, resposta vazia da IA que cai no parser local, botão Reportar, fatias de queijo, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 57 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, tela de entrada sem formulário de email, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, edição de refeição de dia passado com troca de tipo e adição de alimento, padronização dos nomes, nomes fora da tabela, nome de alimento sozinho, regressão de refeições compostas, preparação que não vira alimento simples, pergunta que não vira refeição, IA interpretando quantidade antes da tabela, correção de refeição pelo histórico, correção com texto solto da IA que usa o parser local, correção sem alimento reconhecível que pede para repetir, resposta vazia da IA que cai no parser local, botão Reportar, fatias de queijo, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as sete suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 263.934 bytes crus, 65.982 bytes em gzip e 54.857 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 252.035 bytes crus, 63.715 bytes em gzip e 52.988 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato usa um modelo gratuito com visão e um modelo de reserva; é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
 - A interpretação de refeição usa um modelo gratuito de texto/visão (`google/gemma-4-31b-it:free` no OpenRouter) e cai para `google/gemma-4-26b-a4b-it:free` se o primeiro não devolver JSON válido. O parser local só entra quando a IA está desligada ou falha.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.18.0`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.19.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
 Criar contas e aceitar cobranças exige o seu login. Estes são os passos mínimos:
 
 1. **Supabase**: crie um projeto (plano gratuito). Em *Project Settings > API*, copie a **URL** e a chave **publishable/anon**.
-2. **Supabase, email**: em *Authentication > Providers > Email*, mantenha o provedor habilitado. Para entrega confiável, configure um SMTP em *Authentication > SMTP Settings*. Se **Confirm email** estiver ligado, o cadastro só entra depois do clique no link; se estiver desligado, o cadastro já cria a sessão. Em produção, **desligue Anonymous sign-ins**: o botão visitante já fica oculto no app, mas a API do Supabase ainda aceita login anônimo se a opção estiver ligada no painel.
+2. **Supabase, visitante**: em *Authentication > Providers > Anonymous*, ligue **Anonymous sign-ins**. É isso que permite o botão **Entrar como visitante** funcionar sem email e sem senha. O app não usa cadastro por email.
 3. **Google (opcional)**: no Google Cloud, crie um *OAuth client* do tipo *Web application*. Em *Authorized redirect URIs*, use `https://SEU-PROJETO.supabase.co/auth/v1/callback`. Depois, em Supabase *Authentication > Providers > Google*, cole o Client ID e o Client Secret. Para exibir o botão, use `AUTH_GOOGLE: true` em `config.js`.
-4. **Supabase, URLs de retorno**: em *Authentication > URL Configuration*, defina a URL de produção como *Site URL* e adicione a mesma URL e a URL local em *Redirect URLs*. Isso vale para confirmação de email e recuperação de senha.
+4. **Supabase, URLs de retorno**: em *Authentication > URL Configuration*, defina a URL de produção como *Site URL* e adicione a mesma URL e a URL local em *Redirect URLs*. Isso vale para o retorno do login Google.
 5. **Backend**: aplique as migrações de `supabase/migrations/` no SQL Editor ou pela Supabase CLI para criar `viva_data` e `viva_foods` com RLS. A Edge Function `assistente` é legada; a IA de produção usa `/api/ai` no Vercel.
 6. **Site**: preencha `config.js` com a URL e a chave do passo 1. O projeto Vercel já está conectado ao repositório; `npx vercel --prod` publica a pasta `public`. Se trocar de projeto Supabase, defina também `SUPABASE_URL` e `SUPABASE_ANON_KEY` nas variáveis do Vercel; `api/ai.mjs` valida o JWT com elas.
 7. **IA (opcional, uma vez, pelo dono)**: em *Vercel > Project > Settings > Environment Variables*, crie `AI_API_KEY` com uma chave de OpenAI, Groq, Gemini ou OpenRouter. Para começar sem custo, use uma chave gratuita de OpenRouter, Gemini ou Groq (veja a seção **IA gratuita**). Opcionalmente defina `AI_PROVIDER`, `AI_MODEL`, `AI_VISION_MODEL` e `AI_MEAL_MODEL`. Depois faça um novo deploy. O usuário pode usar essa IA só com login ou salvar a própria chave em Perfil. Sem `AI_API_KEY`, o cartão continua disponível para quem quiser usar a própria chave; sem nenhuma chave, o assistente local responde.
 
 Depois disso, abra o link no celular e toque em *Adicionar à tela inicial*.
 
-## Login por email
+## Entrar sem email
 
-O login principal é email e senha. O app valida o formato do email e o tamanho da senha antes de chamar o Supabase; o Supabase confere a senha e devolve a sessão. Mensagens de erro não revelam se um email existe, exceto no cadastro duplicado, que pede para entrar ou recuperar a senha.
+A tela de entrada tem dois caminhos:
 
-- **Criar conta**: o app envia email e senha ao Supabase. Com confirmação ligada, mostra “Confirme seu email”; o link volta para o app e conclui o login com PKCE.
-- **Entrar**: usa `grant_type=password` e renova a sessão com refresh token, como no login Google.
-- **Esqueci a senha**: envia um link de recuperação. O link abre a tela de nova senha; a troca usa `PUT /auth/v1/user` com a sessão temporária.
-- **Alterar senha**: em Perfil, disponível para contas com email, inclusive as criadas pelo Google.
-- **Google**: continua opcional. Se `AUTH_GOOGLE` for `false`, o botão não aparece.
-- **Visitante**: fica oculto por padrão. Só aparece com `AUTH_VISITOR: true`; não use esse modo quando cada pessoa precisa de uma conta identificável.
+- **Entrar como visitante**: cria uma sessão anônima no Supabase e abre o app. Não pede email, senha nem confirmação. Os dados ficam ligados a essa sessão anônima no navegador; use **Exportar** ou **Apagar tudo** em Perfil quando quiser.
+- **Entrar com Google**: opcional, para quem prefere uma conta identificável. Usa PKCE e renova a sessão automaticamente.
+
+Não há formulário de email, cadastro por senha, recuperação de senha nem alteração de senha nesta versão. O modo visitante precisa de **Anonymous sign-ins** ligado no Supabase; se estiver desligado, o app mostra uma mensagem pedindo para ativar no painel.
 
 Em `config.js`:
 
 ```js
-AUTH_GOOGLE: false,
-AUTH_VISITOR: false
+AUTH_GOOGLE: false
 ```
 
 ## Quantidades e nomes fora da tabela
