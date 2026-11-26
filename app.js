@@ -18,7 +18,7 @@
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
-  const APP_VERSION = "2.19.0";
+  const APP_VERSION = "2.20.0";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -183,6 +183,8 @@
   let dirty = false;
   let chatBusy = false;
   let deleteArmed = 0;
+  let pendingImport = null;
+  let importTimer = null;
   let editingMealId = null;
   let selectedDayKey = ymd();
   let installPrompt = null;
@@ -3688,22 +3690,126 @@
     renderChat();
   }
 
+  function downloadJSON(payload, filename) {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = h("a", { href: url, download: filename });
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
   function exportData() {
-    const payload = {
+    downloadJSON({
       app: "Viva",
       version: VERSION,
       exportedAt: nowIso(),
       account: { email: user?.email || "" },
       data: state
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = h("a", { href: url, download: `viva-dados-${ymd()}.json` });
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }, `viva-dados-${ymd()}.json`);
     toast("Exportação pronta.");
+  }
+
+  function importPayloadFrom(raw) {
+    let value = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (Array.isArray(value)) {
+      if (value.length !== 1) throw new Error("O arquivo tem mais de uma linha. Importe uma conta por vez.");
+      value = value[0];
+    }
+    if (value && typeof value.data === "string") value = JSON.parse(value.data);
+    else if (value && value.data && typeof value.data === "object") value = value.data;
+    if (value && value.state && typeof value.state === "object") value = value.state;
+    if (!value || typeof value !== "object" || !value.profile || typeof value.profile !== "object" || !value.days || typeof value.days !== "object") {
+      throw new Error("Não encontrei um backup da Viva com perfil e diário.");
+    }
+    return migrate(value);
+  }
+
+  function importSummary(next) {
+    const days = Object.keys(next.days).length;
+    const meals = Object.values(next.days).reduce((total, day) => total + (Array.isArray(day?.meals) ? day.meals.length : 0), 0);
+    return `${next.profile.name || "Sem nome"} · ${days} dia(s), ${meals} refeição(ões), ${next.weights.length} pesagem(ns)`;
+  }
+
+  function openImport() {
+    pendingImport = null;
+    clearTimeout(importTimer);
+    $("#import-text").value = "";
+    $("#import-file-name").textContent = "Nenhum arquivo selecionado";
+    $("#btn-import-confirm").disabled = true;
+    const status = $("#import-status");
+    status.textContent = "Escolha um arquivo ou cole o JSON.";
+    status.dataset.tone = "";
+    const dialog = $("#import-dialog");
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  }
+
+  function reviewImport() {
+    clearTimeout(importTimer);
+    const status = $("#import-status");
+    const confirm = $("#btn-import-confirm");
+    const raw = $("#import-text").value.trim();
+    pendingImport = null;
+    confirm.disabled = true;
+    status.dataset.tone = "";
+    if (!raw) {
+      status.textContent = "Escolha um arquivo ou cole o JSON.";
+      return;
+    }
+    try {
+      const next = importPayloadFrom(raw);
+      pendingImport = next;
+      confirm.disabled = false;
+      status.dataset.tone = "ok";
+      status.textContent = `Pronto: ${importSummary(next)}.`;
+    } catch (err) {
+      status.textContent = err instanceof SyntaxError ? "JSON inválido. Confira o conteúdo colado." : err.message;
+    }
+  }
+
+  async function readImportFile(file) {
+    if (!file) return;
+    const status = $("#import-status");
+    try {
+      $("#import-text").value = await file.text();
+      $("#import-file-name").textContent = file.name;
+      reviewImport();
+    } catch {
+      status.textContent = "Não consegui ler o arquivo.";
+    }
+  }
+
+  async function applyImport() {
+    if (!pendingImport) return;
+    const dialog = $("#import-dialog");
+    const status = $("#import-status");
+    const button = $("#btn-import-confirm");
+    const previous = state;
+    button.disabled = true;
+    status.dataset.tone = "";
+    status.textContent = "Baixando backup e salvando…";
+    try {
+      const backup = { app: "Viva", version: VERSION, exportedAt: nowIso(), account: { email: user?.email || "" }, data: previous };
+      downloadJSON(backup, `viva-antes-importacao-${ymd()}.json`);
+      try { localStorage.setItem("viva.pre-import.backup", JSON.stringify(backup)); } catch { /* backup local opcional */ }
+    } catch { /* o backup em arquivo pode ser bloqueado pelo navegador */ }
+    state = pendingImport;
+    selectedDayKey = ymd();
+    renderAll();
+    showMain();
+    if (!await saveNow()) {
+      state = previous;
+      selectedDayKey = ymd();
+      renderAll();
+      status.textContent = "Não consegui salvar a importação. Tente de novo com internet.";
+      button.disabled = false;
+      return;
+    }
+    pendingImport = null;
+    if (typeof dialog.close === "function") dialog.close();
+    toast("Dados antigos importados.");
   }
 
   function disarmDelete() {
@@ -3856,6 +3962,15 @@
     $("#btn-water-500").addEventListener("click", () => addWater(500));
     $("#btn-water-undo").addEventListener("click", undoWater);
     $("#btn-export").addEventListener("click", exportData);
+    $("#btn-import").addEventListener("click", openImport);
+    $("#import-file").addEventListener("click", () => $("#import-input").click());
+    $("#import-input").addEventListener("change", (event) => readImportFile(event.target.files?.[0]));
+    $("#import-text").addEventListener("input", () => {
+      clearTimeout(importTimer);
+      importTimer = setTimeout(reviewImport, 150);
+    });
+    $("#btn-import-confirm").addEventListener("click", applyImport);
+    $("#import-cancel").addEventListener("click", () => $("#import-dialog").close());
     $("#btn-delete").addEventListener("click", armDelete);
     $("#btn-logout").addEventListener("click", logout);
     $("#btn-install").addEventListener("click", async () => {

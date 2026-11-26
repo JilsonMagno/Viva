@@ -450,6 +450,9 @@ img,svg{display:block}
 .report-card textarea{width:100%;min-height:220px;max-height:45dvh;resize:vertical;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--bg-2);color:var(--ink);font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
 .report-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 .report-status{min-height:1.2em;font-size:.78rem;color:var(--muted)}
+.report-status[data-tone="ok"]{color:var(--green-2)}
+.import-pick{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.import-pick .fineprint{overflow-wrap:anywhere}
 @media (min-width:960px){.toast{bottom:24px}}
 .offline-bar{background:rgba(196,105,74,.14);border:1px solid rgba(196,105,74,.3);color:var(--terra);border-radius:14px;padding:9px 13px;font-size:.8rem;font-weight:650;text-align:center}
 </style>
@@ -912,6 +915,7 @@ img,svg{display:block}
               <p class="targets-note">Você é dono do que registra. Exporte uma cópia em JSON ou apague tudo.</p>
               <div class="danger-zone" style="margin-top:14px">
                 <button class="btn btn-subtle" id="btn-export" type="button">Exportar dados (JSON)</button>
+                <button class="btn btn-subtle" id="btn-import" type="button">Importar dados antigos</button>
                 <button class="btn btn-danger" id="btn-delete" type="button">Apagar todos os dados</button>
                 <p class="fineprint" id="delete-hint" role="status" aria-live="polite"></p>
               </div>
@@ -948,6 +952,26 @@ img,svg{display:block}
       <button type="button" class="btn btn-primary btn-sm" id="report-send">Enviar</button>
     </div>
     <p class="report-status" id="report-status" role="status"></p>
+  </form>
+</dialog>
+<dialog id="import-dialog" class="report-dialog" aria-labelledby="import-title">
+  <form method="dialog" class="report-card">
+    <header>
+      <h2 id="import-title">Importar dados antigos</h2>
+      <button type="submit" class="icon-btn" value="cancel" aria-label="Fechar importação">×</button>
+    </header>
+    <p class="report-hint">Escolha um JSON exportado pela Viva ou cole o resultado da consulta <code>select data from public.viva_data ...</code>. A importação substitui os dados atuais e baixa um backup antes de salvar.</p>
+    <div class="import-pick">
+      <button type="button" class="btn btn-ghost btn-sm" id="import-file">Escolher arquivo</button>
+      <span class="fineprint" id="import-file-name">Nenhum arquivo selecionado</span>
+      <input id="import-input" type="file" accept="application/json,.json" aria-label="Arquivo JSON para importar" hidden>
+    </div>
+    <textarea id="import-text" spellcheck="false" aria-label="JSON dos dados antigos" placeholder='Cole aqui o JSON do backup ou da linha "data" do Supabase'></textarea>
+    <p id="import-status" class="report-status" role="status"></p>
+    <div class="report-actions">
+      <button type="button" class="btn btn-ghost btn-sm" id="import-cancel">Cancelar</button>
+      <button type="button" class="btn btn-primary btn-sm" id="btn-import-confirm" disabled>Importar e substituir</button>
+    </div>
   </form>
 </dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>

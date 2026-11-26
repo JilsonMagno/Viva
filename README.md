@@ -16,7 +16,7 @@ Front-end estático (uma página, sem bundler; `build.cjs` injeta `app.js` no `i
 - Chat livre com IA: perguntas abertas, texto sem formato de comando e pedidos de pesquisa vão para a IA, não só para respostas programadas. Cada resposta tem o botão **Reportar**, que envia a pergunta, a resposta, o perfil sem nome/e-mail, as refeições do dia e a versão do app. A IA recebe o perfil, as metas, o dia atual, os últimos dias detalhados, o resumo de todo o histórico, o peso e as últimas mensagens. Com a pesquisa ligada, consulta Wikipedia e PubMed (ou Tavily, se configurado) e mostra as fontes. O usuário pode, opcionalmente, salvar a própria chave (OpenAI, Gemini, Groq ou OpenRouter) em Perfil; ela fica só no navegador e tem prioridade. Sem nenhuma chave, o assistente local responde sobre proteína, calorias, água, resumo e sugestão de jantar.
 - Foto do prato: a IA com visão estima alimentos, porções e kcal; o usuário confere e adiciona ao diário. O modelo de visão tem um modelo de reserva quando o primeiro volta vazio.
 - Dashboard completo em Evolução: perfil, metas, hoje, médias de 7 e 14 dias, peso, alimentos mais registrados e histórico recente, com impressão/PDF.
-- Exportar os dados em JSON e apagar tudo, com confirmação em dois toques.
+- Exportar os dados em JSON, importar um backup antigo e apagar tudo, com confirmação em dois toques.
 - Instalável no celular (tela inicial), com casca em cache.
 - Base de 83 alimentos com valores por 100 g, fonte e referência por item (TACO 4ª ed. e USDA FoodData Central), mais 3 preparações compostas estimadas.
 - Quantidades por texto: colheres de sopa/chá, colheres comuns, copos, xícaras, fatias, gramas, ml, unidades e porções. `4 colheres de aveia` e `1 colher de aveia` geram porções e calorias diferentes.
@@ -43,16 +43,16 @@ Testes:
 - `node tests/report.test.mjs`: 5 verificações do endpoint de relatórios, incluindo JWT, gravação do usuário, limite de contexto e fallback quando a tabela falha.
 - `node tests/food-api.test.mjs`: 11 verificações da busca de alimentos fora da tabela no Open Food Facts, incluindo JWT, padronização, plural, cache persistente, valores por 100 g, ausência de dados e recusa de produtos preparados que não correspondem ao alimento pedido.
 - `tests/fixtures/meal-cases.json`: casos de regressão de refeições. Cada caso fixa a mensagem, os itens esperados, as gramas e as kcal totais; a suíte falha se qualquer um mudar.
-- `node tests/e2e.test.mjs`: 57 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, tela de entrada sem formulário de email, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, edição de refeição de dia passado com troca de tipo e adição de alimento, padronização dos nomes, nomes fora da tabela, nome de alimento sozinho, regressão de refeições compostas, preparação que não vira alimento simples, pergunta que não vira refeição, IA interpretando quantidade antes da tabela, correção de refeição pelo histórico, correção com texto solto da IA que usa o parser local, correção sem alimento reconhecível que pede para repetir, resposta vazia da IA que cai no parser local, botão Reportar, fatias de queijo, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
+- `node tests/e2e.test.mjs`: 58 cenários no Chromium, com o Supabase simulado. Cobrem login PKCE, tela de entrada sem formulário de email, login visitante, refresh, onboarding, persistência, IA ligada/desligada, falha da IA, IA do servidor sem chave do usuário, chave própria (BYOK), foto do prato, quantidades, edição de quantidade e exclusão de alimento, edição de refeição de dia passado com troca de tipo e adição de alimento, padronização dos nomes, nomes fora da tabela, nome de alimento sozinho, regressão de refeições compostas, preparação que não vira alimento simples, pergunta que não vira refeição, IA interpretando quantidade antes da tabela, correção de refeição pelo histórico, correção com texto solto da IA que usa o parser local, correção sem alimento reconhecível que pede para repetir, resposta vazia da IA que cai no parser local, botão Reportar, fatias de queijo, peso da porção, treino com músculos/intensidade na tela principal, compras com orçamento, texto livre e pesquisa na web, dashboard/impressão, respostas locais, exportação, exclusão, logout, isolamento entre contas, links diretos, as 6 abas, PWA, acessibilidade, falha de rede e layout em 390 px em todas as abas.
 - `npm test`: roda as sete suítes.
 
 ## Desempenho medido (produção, 2026-11-22)
 
-- `index.html`: 252.035 bytes crus, 63.715 bytes em gzip e 52.988 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
+- `index.html`: 258.321 bytes crus, 65.142 bytes em gzip e 54.138 bytes em Brotli. É uma única requisição de HTML; não há CSS ou JavaScript externo, imagens de layout ou fontes web.
 - O app carrega a configuração pública, a sessão do Supabase e, se houver, a configuração da IA. O dashboard renderiza no máximo 30 dias por vez.
 - A foto do prato usa um modelo gratuito com visão e um modelo de reserva; é reduzida no navegador para no máximo 1280 px e JPEG com qualidade ~0,82 antes de sair do dispositivo.
 - A interpretação de refeição usa um modelo gratuito de texto/visão (`google/gemma-4-31b-it:free` no OpenRouter) e cai para `google/gemma-4-26b-a4b-it:free` se o primeiro não devolver JSON válido. O parser local só entra quando a IA está desligada ou falha.
-- O service worker guarda a casca do app; a versão atual é `viva-v2.19.0`.
+- O service worker guarda a casca do app; a versão atual é `viva-v2.20.0`.
 
 ## O que depende da sua conta (não consigo criar por você)
 
@@ -82,6 +82,24 @@ Em `config.js`:
 ```js
 AUTH_GOOGLE: false
 ```
+
+## Importar dados antigos
+
+Em **Perfil → Seus dados → Importar dados antigos**, dá para recuperar um diário de outra conta ou de um visitante anterior. A janela aceita:
+
+- um arquivo JSON exportado pela Viva;
+- o JSON do campo `data` de uma linha do Supabase;
+- o resultado de uma consulta SQL, quando ela devolve uma única linha.
+
+Para achar uma conta antiga pelo nome do perfil, rode no **SQL Editor** do Supabase:
+
+```sql
+select data
+from public.viva_data
+where data -> 'profile' ->> 'name' ilike '%Edson Santos%';
+```
+
+Copie o JSON retornado e cole na janela de importação. O app mostra um resumo (nome, dias, refeições e pesagens) antes de confirmar. Ao importar, ele baixa automaticamente um backup dos dados atuais, substitui o diário e salva no Supabase. Se a consulta devolver mais de uma linha, importe uma por vez.
 
 ## Quantidades e nomes fora da tabela
 

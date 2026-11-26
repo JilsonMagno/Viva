@@ -1134,7 +1134,7 @@ await check("8j. botão Reportar envia mensagem e contexto", async () => {
     return current.reports?.length ? current.reports[0] : null;
   });
   equal(report.question, "sardinha", "pergunta enviada");
-  equal(report.version, "2.19.0", "versão enviada");
+  equal(report.version, "2.20.0", "versão enviada");
   equal(report.profile.name, undefined, "nome não deve ir no relatório");
   assert(report.today.meals.length === 1, "refeição deveria ir no contexto");
   await page.close();
@@ -1207,6 +1207,42 @@ await check("10. exportação gera um JSON completo dos dados", async () => {
   equal(payload.data.profile.name, "Ana", "perfil exportado");
   equal(payload.data.targets.kcal, 1970, "metas exportadas");
   assert(payload.data.days && typeof payload.data.days === "object", "dias não exportados");
+  await page.close();
+});
+
+await check("10b. importa o backup antigo pela opção do Perfil", async () => {
+  await resetAll();
+  await seed(demoState());
+  const page = await newPage();
+  await login(page, "A");
+  await waitMain(page);
+  await goView(page, "perfil");
+  await page.click("#btn-import");
+  await page.waitForFunction(() => document.getElementById("import-dialog").open, { timeout: 5000 });
+  const base = demoState();
+  const old = demoState({
+    profile: { ...base.profile, name: "Edson Santos" },
+    days: { [today()]: { meals: [], waterMl: 750, activities: [], weightKg: null } }
+  });
+  await page.$eval("#import-text", (element, value) => {
+    element.value = value;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  }, JSON.stringify([{ user_id: "antigo", data: old }]));
+  await page.waitForFunction(() => !document.getElementById("btn-import-confirm").disabled, { timeout: 5000 });
+  assert((await textOf(page, "#import-status")).includes("Edson Santos"), "prévia deveria mostrar o perfil importado");
+  await page.click("#btn-import-confirm");
+  await waitFor(async () => {
+    const row = await rowFor(USER_A.id);
+    return row && row.data.profile.name === "Edson Santos" ? row : null;
+  });
+  assert((await textOf(page, "#greet-title")).includes("Edson"), "saudação deveria usar o nome importado");
+  let row = await rowFor(USER_A.id);
+  equal(row.data.days[today()].waterMl, 750, "água importada");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitMain(page);
+  row = await rowFor(USER_A.id);
+  equal(row.data.profile.name, "Edson Santos", "importação deveria persistir");
+  assert((await textOf(page, "#greet-title")).includes("Edson"), "nome importado deveria persistir");
   await page.close();
 });
 
