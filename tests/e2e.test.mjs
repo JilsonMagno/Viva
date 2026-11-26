@@ -1176,7 +1176,7 @@ await check("8j. botão Reportar envia mensagem e contexto", async () => {
     return current.reports?.length ? current.reports[0] : null;
   });
   equal(report.question, "sardinha", "pergunta enviada");
-  equal(report.version, "2.22.0", "versão enviada");
+  equal(report.version, "2.23.0", "versão enviada");
   equal(report.profile.name, undefined, "nome não deve ir no relatório");
   assert(report.today.meals.length === 1, "refeição deveria ir no contexto");
   await page.close();
@@ -1526,6 +1526,48 @@ await check("16. interface mobile não vaza na horizontal e tem nomes acessívei
   }));
   assert(!after.classOn, "sair do campo deveria fechar o modo de digitação");
   assert(after.head !== "none", "cabeçalho volta ao sair do campo");
+  await page.close();
+});
+
+await check("16b. editor de refeição cabe em telas de 320 e 360 px", async () => {
+  await resetAll();
+  const base = demoState();
+  await seed(demoState({
+    days: {
+      [today()]: {
+        meals: [{
+          id: "meal-mobile",
+          label: "Café da manhã",
+          at: "08:10",
+          kcal: 118,
+          protein: 4,
+          carbs: 20,
+          fat: 2,
+          items: [{ name: "Aveia em flocos", grams: 40, kcal: 118, protein: 4, carbs: 20, fat: 2 }]
+        }],
+        waterMl: 400,
+        activities: [],
+        weightKg: 74.5
+      }
+    },
+    profile: { ...base.profile }
+  }));
+  const page = await newPage();
+  await page.setViewport({ width: 360, height: 800, deviceScaleFactor: 1 });
+  await login(page, "A");
+  await waitMain(page);
+  await goView(page, "alimentacao");
+  for (const width of [360, 320]) {
+    await page.setViewport({ width, height: 800, deviceScaleFactor: 1 });
+    await page.evaluate(() => document.querySelector("#view-alimentacao .r-edit")?.click());
+    await page.waitForFunction(() => !!document.querySelector(".meal-edit"), { timeout: 5000 });
+    const size = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: innerWidth }));
+    assert(size.scroll <= size.inner, `editor vaza em ${width}px: ${size.scroll} > ${size.inner}`);
+    const editor = await page.$eval(".meal-edit", (element) => element.getBoundingClientRect().right);
+    assert(editor <= width, `editor passa da tela em ${width}px: ${editor}`);
+    assert((await textOf(page, "#view-alimentacao .r-main small")).includes("08:10"), "horário antigo deveria ser exibido");
+    await page.evaluate(() => document.querySelector("#view-alimentacao .r-edit")?.click());
+  }
   await page.close();
 });
 

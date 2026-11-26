@@ -18,7 +18,7 @@
   const LS_PKCE = "viva.pkce.v2";
   const LS_VIEW = "viva.view.v2";
   const VERSION = 2;
-  const APP_VERSION = "2.22.0";
+  const APP_VERSION = "2.23.0";
   const SAVE_DELAY = 700;
   const CHAT_MAX = 60;
 
@@ -91,7 +91,15 @@
   }
 
   function fmtTime(iso) {
-    return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    if (iso === null || iso === undefined || iso === "") return "--:--";
+    if (typeof iso === "string") {
+      const clock = iso.match(/^(\d{1,2}):(\d{2})(?::\d{2})?/);
+      if (clock) return `${clock[1].padStart(2, "0")}:${clock[2]}`;
+    }
+    const stamp = typeof iso === "number" && iso > 1e9 && iso < 1e12 ? iso * 1000 : iso;
+    const date = new Date(stamp);
+    if (Number.isNaN(date.getTime())) return "--:--";
+    return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   }
 
   function nf(n) {
